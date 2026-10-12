@@ -108,6 +108,13 @@ export function useGameControls(surface: RefObject<HTMLElement | null>) {
       if (gameStore.getState().status === "playing" && e.cancelable) e.preventDefault();
     };
 
+    // iOS only lets audio start/resume on user-activation events (touchend /
+    // pointerup / click — not touch pointerdown). Any tap revives the sound,
+    // including after the lock screen or a phone call interrupted it.
+    const unlockAudio = () => audio.unlock();
+    window.addEventListener("touchend", unlockAudio, { passive: true });
+    window.addEventListener("pointerup", unlockAudio, { passive: true });
+    window.addEventListener("click", unlockAudio, { passive: true });
     el.addEventListener("pointerdown", onPointerDown);
     el.addEventListener("pointermove", onPointerMove);
     el.addEventListener("pointerup", endDrag);
@@ -120,6 +127,9 @@ export function useGameControls(surface: RefObject<HTMLElement | null>) {
     window.addEventListener("keyup", onKeyUp);
     window.addEventListener("blur", onBlur);
     return () => {
+      window.removeEventListener("touchend", unlockAudio);
+      window.removeEventListener("pointerup", unlockAudio);
+      window.removeEventListener("click", unlockAudio);
       el.removeEventListener("pointerdown", onPointerDown);
       el.removeEventListener("pointermove", onPointerMove);
       el.removeEventListener("pointerup", endDrag);
