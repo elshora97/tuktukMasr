@@ -1,0 +1,20 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "bounce-easing",
+        "value": "wobble",
+        "createdAt": "2026-10-12T13:33:06.868Z",
+        "reason": "Claude judgment: 'wobble' is an ease-in-out ±2deg sway of the title, mimicking a hanging tuk-tuk sign; not bounce easing"
+      },
+      {
+        "rule": "bounce-easing",
+        "value": "cubic-bezier(0.2, 0.9, 0.3, 1.15)",
+        "createdAt": "2026-10-12T13:33:07.838Z",
+        "reason": "Claude judgment: slight overshoot pop on arcade game panels (rise-in) is genre-appropriate for an arcade game UI; reduced-motion users get it disabled"
+      }
+    ]
+  }
+}

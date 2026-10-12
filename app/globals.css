@@ -1,0 +1,188 @@
+@import "tailwindcss";
+
+@theme {
+  --font-display: var(--font-lalezar), var(--font-cairo), sans-serif;
+  --font-body: var(--font-cairo), Tahoma, sans-serif;
+  --color-ink: #1a0d06;
+  --color-saffron: #f6c21c;
+  --color-tuk: #c3172a;
+  --color-tuk-dark: #8e0f1d;
+  --color-nile: #18a39a;
+  --color-cream: #fff4dc;
+  --color-sand: #e6cda6;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  background: #e6cda6;
+  overflow: hidden;
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  font-family: var(--font-body);
+  color: var(--color-ink);
+}
+
+.game-surface {
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* Hand-painted lettering: thick ink outline painted under the fill. */
+.painted {
+  font-family: var(--font-display);
+  paint-order: stroke fill;
+  -webkit-text-stroke: 0.14em var(--color-ink);
+  text-shadow: 0 0.09em 0 var(--color-ink);
+  letter-spacing: 0;
+}
+.painted-thin {
+  font-family: var(--font-display);
+  paint-order: stroke fill;
+  -webkit-text-stroke: 0.09em var(--color-ink);
+  text-shadow: 0 0.06em 0 var(--color-ink);
+}
+
+/* Tuk-tuk roof fringe: hanging multicolor tassels. */
+.fringe {
+  height: 14px;
+  background: repeating-linear-gradient(90deg, #f6c21c 0 16px, #c3172a 16px 32px, #18a39a 32px 48px, #2f6fd6 48px 64px, #ff7ab8 64px 80px);
+  -webkit-mask: conic-gradient(from -30deg at 50% 100%, #000 60deg, #0000 0) 0 0 / 16px 14px repeat-x;
+  mask: conic-gradient(from -30deg at 50% 100%, #000 60deg, #0000 0) 0 0 / 16px 14px repeat-x;
+}
+
+/* Sign plate: cream panel, ink border, hard offset shadow. */
+.plate {
+  background: var(--color-cream);
+  border: 3px solid var(--color-ink);
+  border-radius: 18px;
+  box-shadow: 0 6px 0 var(--color-ink);
+}
+
+.btn-sticker {
+  font-family: var(--font-display);
+  border: 3px solid var(--color-ink);
+  border-radius: 16px;
+  box-shadow: 0 6px 0 var(--color-ink);
+  transition: transform 90ms ease, box-shadow 90ms ease, filter 120ms ease;
+}
+.btn-sticker:hover {
+  filter: brightness(1.06);
+}
+.btn-sticker:active {
+  transform: translateY(5px);
+  box-shadow: 0 1px 0 var(--color-ink);
+}
+.btn-sticker:focus-visible,
+.btn-icon:focus-visible {
+  outline: 3px solid #fff;
+  outline-offset: 3px;
+}
+.btn-icon {
+  border: 2.5px solid var(--color-ink);
+  border-radius: 14px;
+  box-shadow: 0 4px 0 var(--color-ink);
+  transition: transform 90ms ease, box-shadow 90ms ease;
+}
+.btn-icon:active {
+  transform: translateY(3px);
+  box-shadow: 0 1px 0 var(--color-ink);
+}
+
+/* Floating overtake label */
+@keyframes label-pop {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -40%) scale(0.4) rotate(-6deg);
+  }
+  14% {
+    opacity: 1;
+    transform: translate(-50%, -100%) scale(1.18) rotate(2deg);
+  }
+  26% {
+    transform: translate(-50%, -110%) scale(1) rotate(-1deg);
+  }
+  75% {
+    opacity: 1;
+    transform: translate(-50%, -175%) scale(1) rotate(0deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -220%) scale(0.92);
+  }
+}
+.overtake-label {
+  animation: label-pop 1.15s cubic-bezier(0.2, 0.9, 0.3, 1.1) forwards;
+  will-change: transform, opacity;
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(22px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.rise-in {
+  animation: rise-in 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.15) both;
+}
+
+@keyframes wobble {
+  0%,
+  100% {
+    transform: rotate(-2deg);
+  }
+  50% {
+    transform: rotate(2deg);
+  }
+}
+.wobble {
+  animation: wobble 2.6s ease-in-out infinite;
+}
+
+@keyframes score-bump {
+  0% {
+    transform: scale(1);
+  }
+  30% {
+    transform: scale(1.25);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+.score-bump {
+  animation: score-bump 0.32s ease-out;
+}
+
+@keyframes pulse-hint {
+  0%,
+  100% {
+    transform: translateX(-14px);
+  }
+  50% {
+    transform: translateX(14px);
+  }
+}
+.swipe-hint {
+  animation: pulse-hint 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wobble,
+  .swipe-hint {
+    animation: none;
+  }
+  .rise-in {
+    animation-duration: 0.01s;
+  }
+}

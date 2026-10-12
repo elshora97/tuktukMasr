@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <radialGradient id="sun" cx="50%" cy="38%" r="70%">
+      <stop offset="0" stop-color="#ffe08a"/>
+      <stop offset="0.55" stop-color="#f6c21c"/>
+      <stop offset="1" stop-color="#e09a12"/>
+    </radialGradient>
+    <linearGradient id="cowl" x1="0" x2="1">
+      <stop offset="0" stop-color="#8e0f1d"/>
+      <stop offset="0.35" stop-color="#d0202f"/>
+      <stop offset="0.7" stop-color="#b3121f"/>
+      <stop offset="1" stop-color="#7c0b15"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#sun)"/>
+  <!-- sun rays -->
+  <g fill="#fff3c4" opacity="0.35">
+    <path d="M256 196 L196 0 H236 Z"/><path d="M256 196 L276 0 H316 Z"/>
+    <path d="M256 196 L0 70 V120 Z"/><path d="M256 196 L512 70 V120 Z"/>
+    <path d="M256 196 L80 0 H130 Z"/><path d="M256 196 L382 0 H432 Z"/>
+  </g>
+  <!-- road -->
+  <path d="M0 420 L512 420 L512 512 L0 512 Z" fill="#4a4744"/>
+  <g fill="#ece6d6"><rect x="40" y="462" width="70" height="12" rx="3"/><rect x="221" y="462" width="70" height="12" rx="3"/><rect x="402" y="462" width="70" height="12" rx="3"/></g>
+  <ellipse cx="256" cy="430" rx="150" ry="20" fill="#000" opacity="0.35"/>
+  <g stroke="#1a0d06" stroke-width="8" stroke-linejoin="round" stroke-linecap="round">
+    <!-- mirrors -->
+    <path d="M150 232 L104 196" fill="none"/><path d="M362 232 L408 196" fill="none"/>
+    <circle cx="96" cy="186" r="24" fill="#9fb4c4"/><circle cx="416" cy="186" r="24" fill="#9fb4c4"/>
+    <!-- side panels -->
+    <path d="M132 250 H174 V392 H140 Q126 392 126 376 V262 Q126 250 132 250 Z" fill="#7c0b15"/>
+    <path d="M380 250 H338 V392 H372 Q386 392 386 376 V262 Q386 250 380 250 Z" fill="#7c0b15"/>
+    <!-- pillars + windshield -->
+    <rect x="146" y="148" width="14" height="110" fill="#151515"/>
+    <rect x="352" y="148" width="14" height="110" fill="#151515"/>
+    <rect x="160" y="150" width="192" height="104" fill="#bfe0f2"/>
+  </g>
+  <!-- driver -->
+  <rect x="214" y="214" width="84" height="44" rx="10" fill="#2f6fb0"/>
+  <circle cx="256" cy="196" r="24" fill="#8a5a3c"/>
+  <path d="M232 192 Q256 158 280 192 Q268 178 256 178 Q244 178 232 192 Z" fill="#1b1b1b"/>
+  <rect x="244" y="205" width="24" height="5" rx="2" fill="#1b1b1b"/>
+  <circle cx="247" cy="194" r="3" fill="#111"/><circle cx="265" cy="194" r="3" fill="#111"/>
+  <!-- evil eye charm -->
+  <line x1="300" y1="150" x2="300" y2="182" stroke="#ddd" stroke-width="3"/>
+  <circle cx="300" cy="190" r="11" fill="#1f63d6" stroke="#1a0d06" stroke-width="3"/>
+  <circle cx="300" cy="190" r="5" fill="#fff"/><circle cx="300" cy="190" r="2.5" fill="#0b1630"/>
+  <g stroke="#1a0d06" stroke-width="8" stroke-linejoin="round">
+    <!-- roof -->
+    <rect x="118" y="92" width="276" height="52" rx="26" fill="#151515"/>
+    <rect x="110" y="134" width="292" height="16" rx="6" fill="#f6c21c"/>
+    <!-- cowl -->
+    <path d="M176 254 H336 Q362 254 362 290 V352 Q362 392 322 396 H190 Q150 392 150 352 V290 Q150 254 176 254 Z" fill="url(#cowl)"/>
+    <!-- headlight -->
+    <circle cx="256" cy="304" r="34" fill="#fff6cf"/>
+  </g>
+  <circle cx="256" cy="304" r="34" fill="none" stroke="#d7dce2" stroke-width="7"/>
+  <!-- fringe -->
+  <g stroke="#1a0d06" stroke-width="2.5" stroke-linejoin="round">
+    <path d="M118 150 l10 20 l10 -20 Z" fill="#e2253a"/><path d="M142 150 l10 20 l10 -20 Z" fill="#18a39a"/>
+    <path d="M166 150 l10 20 l10 -20 Z" fill="#2f6fd6"/><path d="M190 150 l10 20 l10 -20 Z" fill="#ff7ab8"/>
+    <path d="M214 150 l10 20 l10 -20 Z" fill="#ffffff"/><path d="M238 150 l10 20 l10 -20 Z" fill="#e2253a"/>
+    <path d="M262 150 l10 20 l10 -20 Z" fill="#18a39a"/><path d="M286 150 l10 20 l10 -20 Z" fill="#2f6fd6"/>
+    <path d="M310 150 l10 20 l10 -20 Z" fill="#ff7ab8"/><path d="M334 150 l10 20 l10 -20 Z" fill="#ffffff"/>
+    <path d="M358 150 l10 20 l10 -20 Z" fill="#e2253a"/><path d="M382 150 l10 20 l10 -20 Z" fill="#18a39a"/>
+  </g>
+  <!-- indicators, plate -->
+  <g stroke="#1a0d06" stroke-width="5">
+    <rect x="178" y="266" width="30" height="16" rx="4" fill="#ff9a1a"/>
+    <rect x="304" y="266" width="30" height="16" rx="4" fill="#ff9a1a"/>
+    <rect x="216" y="352" width="80" height="30" rx="5" fill="#f4f4ee"/>
+  </g>
+  <rect x="218" y="354" width="76" height="8" fill="#e07a1f"/>
+  <!-- front wheel + mudguard -->
+  <g stroke="#1a0d06" stroke-width="8" stroke-linejoin="round">
+    <rect x="234" y="396" width="44" height="40" rx="14" fill="#151515"/>
+    <path d="M222 404 Q256 380 290 404 V420 H274 Q256 404 238 420 H222 Z" fill="#b3121f"/>
+  </g>
+</svg>
