@@ -1,0 +1,18 @@
+# Render Blueprint for the multiplayer race server (Dashboard → New → Blueprint).
+# The game website itself is deployed separately (e.g. Vercel).
+services:
+  - type: web
+    name: toktok-race
+    runtime: node
+    plan: free
+    buildCommand: npm ci
+    startCommand: npm run race-server
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      # Comma-separated origins allowed to connect, e.g. https://toktok.vercel.app
+      # Set it in the dashboard when Render asks (left empty = allow any origin).
+      - key: CORS_ORIGIN
+        sync: false
