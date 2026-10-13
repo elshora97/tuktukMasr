@@ -50,13 +50,16 @@ function readName() {
   }
 }
 
-/** URL of the race server: NEXT_PUBLIC_MULTIPLAYER_URL, or :4000 on the same host in development. */
+/**
+ * URL of the race server: NEXT_PUBLIC_MULTIPLAYER_URL when set (deployments),
+ * otherwise port 4000 on the same host the game was opened from — so local
+ * `npm run dev` / `npm start` + `npm run race-server` work, also over LAN.
+ */
 export function serverUrl(): string | null {
   const env = process.env.NEXT_PUBLIC_MULTIPLAYER_URL;
   if (env) return env;
   if (typeof window === "undefined") return null;
-  if (process.env.NODE_ENV !== "production") return `${window.location.protocol}//${window.location.hostname}:4000`;
-  return null;
+  return `${window.location.protocol}//${window.location.hostname}:4000`;
 }
 
 // ---------------------------------------------------------------------------
