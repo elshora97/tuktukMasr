@@ -7,6 +7,7 @@ import { audio } from "@/lib/audio";
 import { usePwa } from "@/hooks/usePwa";
 import { missionActions } from "@/lib/mission/missionStore";
 import { raceActions } from "@/lib/race/raceClient";
+import { RACE_ENABLED } from "@/lib/race/shared";
 import SettingsButtons from "./SettingsButtons";
 
 interface ModeCard {
@@ -22,7 +23,7 @@ export default function StartScreen() {
   const best = useGameState((s) => s.best);
   const pwa = usePwa();
 
-  const cards: ModeCard[] = [
+  const allCards: ModeCard[] = [
     {
       id: "endless",
       title: "اللعب الفردي",
@@ -54,6 +55,8 @@ export default function StartScreen() {
       },
     },
   ];
+  // Online races appear only when a race server is configured (NEXT_PUBLIC_MULTIPLAYER_URL).
+  const cards = allCards.filter((c) => c.id !== "race" || RACE_ENABLED);
 
   return (
     <div className="pointer-events-none absolute inset-0 flex flex-col justify-between" data-ui>

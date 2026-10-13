@@ -16,6 +16,7 @@ import RaceMenu from "../race/RaceMenu";
 import RaceHUD from "../race/RaceHUD";
 import { useRaceState } from "@/hooks/useRaceState";
 import { raceActions } from "@/lib/race/raceClient";
+import { RACE_ENABLED } from "@/lib/race/shared";
 import { gameStore } from "@/lib/gameStore";
 
 // Three.js must only run in the browser.
@@ -93,7 +94,7 @@ export default function Game() {
 
   // Invite links (?room=ABCDE) open the race menu with the code filled in.
   useEffect(() => {
-    if (new URLSearchParams(window.location.search).has("room")) {
+    if (RACE_ENABLED && new URLSearchParams(window.location.search).has("room")) {
       gameActions.toMenu("race");
       void raceActions.open();
     }

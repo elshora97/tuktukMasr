@@ -206,3 +206,10 @@ export function stepRacer(r: RacerSim, x: number, dt: number, t: number, traffic
   }
   return false;
 }
+
+/**
+ * Online races are offered only when a race server URL is configured
+ * (NEXT_PUBLIC_MULTIPLAYER_URL, baked in at build time). Without it the
+ * race mode is hidden from the menu and invite links are ignored.
+ */
+export const RACE_ENABLED = Boolean(process.env.NEXT_PUBLIC_MULTIPLAYER_URL);
