@@ -147,7 +147,7 @@ function SpeedLines() {
 
 const PUFFS = 16;
 
-function Exhaust() {
+function Exhaust({ scrolling }: { scrolling: boolean }) {
   const ref = useRef<InstancedMesh>(null);
   const state = useRef({ timer: 0, next: 0, ages: new Float32Array(PUFFS).fill(9), p: Array.from({ length: PUFFS }, () => new Vector3()) });
   const geo = useMemo(() => new SphereGeometry(1, 7, 5), []);
@@ -173,7 +173,11 @@ function Exhaust() {
       const i = s.next;
       s.next = (s.next + 1) % PUFFS;
       s.ages[i] = 0;
-      s.p[i].set(runtime.playerX - 0.42, 0.32, 1.55);
+      // Exhaust pipe: rear-left of the tuk-tuk in its own frame.
+      const pose = runtime.pose;
+      const c = Math.cos(pose.heading);
+      const sn = Math.sin(pose.heading);
+      s.p[i].set(pose.x - 0.42 * c + 1.55 * sn, 0.32, pose.z + 0.42 * sn + 1.55 * c);
     }
     const S = runtime.speed;
     for (let i = 0; i < PUFFS; i++) {
@@ -183,7 +187,12 @@ function Exhaust() {
         continue;
       }
       const p = s.p[i];
-      p.z += (S * 0.55 + 1.5) * dt;
+      if (scrolling) p.z += (S * 0.55 + 1.5) * dt;
+      else {
+        // Static world: puffs stay behind as the tuk-tuk drives away.
+        p.x += Math.sin(runtime.pose.heading) * 1.2 * dt;
+        p.z += Math.cos(runtime.pose.heading) * 1.2 * dt;
+      }
       p.y += 0.7 * dt;
       p.x += Math.sin(age * 9 + i) * 0.2 * dt;
       const sz = (0.08 + age * 0.55) * (1 - age / 0.9);
@@ -267,14 +276,18 @@ function CrashFX() {
       s.t = 0;
       d.visible = true;
       sm.visible = true;
+      // Impact point: just ahead of the tuk-tuk.
+      const pose = runtime.pose;
+      const cx = pose.x - Math.sin(pose.heading) * 1.4;
+      const cz = pose.z - Math.cos(pose.heading) * 1.4;
       for (let i = 0; i < DEBRIS; i++) {
-        s.p[i].set(runtime.crashX + (Math.random() - 0.5) * 1.2, 0.8 + Math.random() * 0.8, -1.2 + Math.random());
+        s.p[i].set(cx + (Math.random() - 0.5) * 1.2, 0.8 + Math.random() * 0.8, cz + (Math.random() - 0.5));
         s.v[i].set((Math.random() - 0.5) * 9, 3 + Math.random() * 7, -4 - Math.random() * 6);
         s.r[i].set(Math.random() * 6, Math.random() * 6, Math.random() * 6);
         s.s[i] = 0.06 + Math.random() * 0.16;
       }
       for (let i = 0; i < SMOKE; i++) {
-        s.sp[i].set(runtime.crashX + (Math.random() - 0.5) * 1.6, 0.6 + Math.random() * 0.6, -1.5 + (Math.random() - 0.5) * 1.5);
+        s.sp[i].set(cx + (Math.random() - 0.5) * 1.6, 0.6 + Math.random() * 0.6, cz + (Math.random() - 0.5) * 1.5);
       }
     }
     const dt = Math.min(rawDt, 0.05);
@@ -321,12 +334,13 @@ function CrashFX() {
   );
 }
 
-export default function Effects({ quality }: { quality: "high" | "low" }) {
+/** `scrolling`: the bridge world scrolls past a fixed player (endless/race); the city world is static. */
+export default function Effects({ quality, scrolling = true }: { quality: "high" | "low"; scrolling?: boolean }) {
   return (
     <>
-      <Dust count={quality === "high" ? 260 : 110} />
-      <SpeedLines />
-      <Exhaust />
+      {scrolling && <Dust count={quality === "high" ? 260 : 110} />}
+      {scrolling && <SpeedLines />}
+      <Exhaust scrolling={scrolling} />
       <CrashFX />
     </>
   );

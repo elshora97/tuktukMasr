@@ -43,7 +43,7 @@ const CURB_TILE = 4;
 // ---------------------------------------------------------------------------
 // Sky dome: dusty Cairo afternoon gradient with a soft sun glow.
 
-function Sky() {
+export function Sky() {
   const material = useMemo(
     () =>
       new ShaderMaterial({
@@ -100,7 +100,7 @@ function Sky() {
 // ---------------------------------------------------------------------------
 // Sun with a shadow frustum that follows the tuk-tuk.
 
-function Sun({ shadows }: { shadows: boolean }) {
+export function Sun({ shadows }: { shadows: boolean }) {
   const light = useRef<DirectionalLight>(null);
   const target = useMemo(() => new Object3D(), []);
   useLayoutEffect(() => {
@@ -109,9 +109,12 @@ function Sun({ shadows }: { shadows: boolean }) {
   useFrame(() => {
     const l = light.current;
     if (!l) return;
-    const px = runtime.playerX;
-    target.position.set(px * 0.5, 0, -14);
-    l.position.set(px * 0.5 + SUN_DIR.x * 70, SUN_DIR.y * 70, -14 + SUN_DIR.z * 70);
+    // Follow the player's pose (world space) so the shadow frustum covers it in every mode.
+    const p = runtime.pose;
+    const tx = p.x - 14 * Math.sin(p.heading);
+    const tz = p.z - 14 * Math.cos(p.heading);
+    target.position.set(tx, 0, tz);
+    l.position.set(tx + SUN_DIR.x * 70, SUN_DIR.y * 70, tz + SUN_DIR.z * 70);
     target.updateMatrixWorld();
   });
   return (
@@ -342,7 +345,7 @@ function buildMedianLamp() {
   return b.build();
 }
 
-function buildSideLamp() {
+export function buildSideLamp() {
   const b = new GeoBuilder();
   const pole = "#7d8580";
   b.cyl(0.1, 0.15, 9.5, 0, 4.75, 0, pole, { segments: 8 });

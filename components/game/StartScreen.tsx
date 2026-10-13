@@ -1,19 +1,59 @@
 "use client";
 
-import { Download, MoveHorizontal, Share, Trophy } from "lucide-react";
+import { ChevronLeft, Download, Flag, Infinity as InfinityIcon, MapPin, MoveHorizontal, Share } from "lucide-react";
+import type { ComponentType } from "react";
 import { gameActions, useGameState } from "@/hooks/useGameState";
 import { audio } from "@/lib/audio";
 import { usePwa } from "@/hooks/usePwa";
+import { missionActions } from "@/lib/mission/missionStore";
+import { raceActions } from "@/lib/race/raceClient";
 import SettingsButtons from "./SettingsButtons";
+
+interface ModeCard {
+  id: "endless" | "race" | "taxi";
+  title: string;
+  points: string[];
+  Icon: ComponentType<{ className?: string; strokeWidth?: number; "aria-hidden"?: boolean }>;
+  tile: string;
+  onPick: () => void;
+}
 
 export default function StartScreen() {
   const best = useGameState((s) => s.best);
   const pwa = usePwa();
 
-  const play = () => {
-    audio.unlock();
-    gameActions.start();
-  };
+  const cards: ModeCard[] = [
+    {
+      id: "endless",
+      title: "اللعب الفردي",
+      points: ["سواقة على طول", "فادي العربيات", best > 0 ? `اكسر رقمك (${best})` : "اكسر رقمك"],
+      Icon: InfinityIcon,
+      tile: "bg-tuk text-saffron",
+      onPick: () => gameActions.start(),
+    },
+    {
+      id: "race",
+      title: "سباق مع صحابك 🏁",
+      points: ["اعمل أوضة خاصة", "ادعي صحابك بالكود", "سباق لايف"],
+      Icon: Flag,
+      tile: "bg-nile text-cream",
+      onPick: () => {
+        gameActions.toMenu("race");
+        void raceActions.open();
+      },
+    },
+    {
+      id: "taxi",
+      title: "وصلني يا معلم 🛺",
+      points: ["وصّل زباين", "امشي ورا الأسهم", "اكسب نقط"],
+      Icon: MapPin,
+      tile: "bg-saffron text-ink",
+      onPick: () => {
+        missionActions.newTrip();
+        gameActions.enterMode("taxi", "playing");
+      },
+    },
+  ];
 
   return (
     <div className="pointer-events-none absolute inset-0 flex flex-col justify-between" data-ui>
@@ -22,11 +62,11 @@ export default function StartScreen() {
         <div className="bg-tuk border-b-[3px] border-ink px-4 pb-3 pt-[max(12px,env(safe-area-inset-top))] shadow-[0_4px_0_#1a0d06]">
           <div className="mx-auto flex max-w-3xl items-start justify-between gap-3">
             <div className="rise-in">
-              <h1 className="painted wobble origin-right text-[clamp(2.4rem,9vw,4.6rem)] leading-[1.15] text-saffron">
+              <h1 className="painted wobble origin-right text-[clamp(2.2rem,8.5vw,4.4rem)] leading-[1.15] text-saffron">
                 توكتوك كوبري مصر
               </h1>
-              <p className="mt-1 text-[clamp(0.9rem,3.4vw,1.15rem)] font-bold text-cream/95">
-                عدّي العربيات.. وخلّي الكوبري كله يشهدلك 🛺
+              <p className="mt-1 text-[clamp(0.85rem,3.2vw,1.1rem)] font-bold text-cream/95">
+                اختار طريقتك.. والكوبري كله يشهدلك 🛺
               </p>
             </div>
             <SettingsButtons compact />
@@ -35,44 +75,48 @@ export default function StartScreen() {
         <div className="fringe" aria-hidden />
       </div>
 
-      {/* Footer: instructions + play */}
-      <div className="pointer-events-auto px-4 pb-[max(18px,env(safe-area-inset-bottom))]">
-        <div className="plate rise-in mx-auto max-w-md p-4 [animation-delay:120ms] sm:p-5">
-          <div className="flex items-center gap-3">
-            <div className="grid size-12 shrink-0 place-items-center rounded-xl border-[2.5px] border-ink bg-saffron">
-              <MoveHorizontal className="swipe-hint size-7" strokeWidth={2.6} aria-hidden />
-            </div>
-            <p className="text-[clamp(1rem,4vw,1.15rem)] font-black leading-snug">
-              حرّك صباعك يمين وشمال عشان تفادي العربيات
-            </p>
+      {/* Mode cards */}
+      <div className="pointer-events-auto min-h-0 overflow-y-auto px-3 pb-[max(14px,env(safe-area-inset-bottom))] pt-2">
+        <div className="plate rise-in mx-auto max-w-md p-3 [animation-delay:120ms] sm:p-4">
+          <div className="mb-2.5 flex items-center gap-2 text-[clamp(0.85rem,3.4vw,0.95rem)] font-black leading-snug">
+            <MoveHorizontal className="swipe-hint size-5 shrink-0" strokeWidth={2.8} aria-hidden />
+            حرّك صباعك يمين وشمال عشان تفادي العربيات
           </div>
-          <p className="mt-2 text-sm font-semibold text-ink/70">
-            على الكمبيوتر: الماوس أو الأسهم ← → &nbsp;•&nbsp; المسافة/H للكلاكس &nbsp;•&nbsp; P للإيقاف
-          </p>
+          <ul className="space-y-2.5" role="list">
+            {cards.map(({ id, title, points, Icon, tile, onPick }) => (
+              <li key={id}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    audio.unlock();
+                    onPick();
+                  }}
+                  className="btn-sticker group flex w-full items-center gap-3 bg-white/80 p-2 text-right"
+                  autoFocus={id === "endless"}
+                  data-mode={id}
+                >
+                  <span className={`grid size-12 shrink-0 place-items-center rounded-xl border-[2.5px] border-ink ${tile}`}>
+                    <Icon className="size-6" strokeWidth={2.8} aria-hidden />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="painted-thin block text-[clamp(1.3rem,5.4vw,1.6rem)] leading-[1.35] text-saffron">{title}</span>
+                    <span className="block truncate text-[0.78rem] font-bold text-ink/75">{points.join(" • ")}</span>
+                  </span>
+                  <ChevronLeft className="size-6 shrink-0 text-ink/60 transition-transform group-hover:-translate-x-1" strokeWidth={3} aria-hidden />
+                </button>
+              </li>
+            ))}
+          </ul>
 
-          <button
-            type="button"
-            onClick={play}
-            className="btn-sticker mt-4 w-full bg-tuk py-3 text-[clamp(1.8rem,7vw,2.3rem)] leading-none text-saffron"
-            autoFocus
-          >
-            <span className="painted-thin">يلا بينا! 🛺</span>
-          </button>
-
-          <div className="mt-3 flex items-center justify-center gap-2 text-sm font-bold">
-            <Trophy className="size-4 text-tuk" strokeWidth={2.6} aria-hidden />
-            <span>أحسن سكور:</span>
-            <span className="font-display text-lg leading-none text-tuk tabular-nums">{best}</span>
-          </div>
 
           {pwa.canInstall && (
             <button
               type="button"
               onClick={() => void pwa.install()}
-              className="btn-icon mt-3 flex w-full items-center justify-center gap-2 bg-nile py-2 font-black text-cream"
+              className="btn-icon mt-2.5 flex w-full items-center justify-center gap-2 bg-nile py-1.5 text-sm font-black text-cream"
             >
-              <Download className="size-5" strokeWidth={2.6} aria-hidden />
-              ثبّت اللعبة على موبايلك والعب من غير نت
+              <Download className="size-4" strokeWidth={2.6} aria-hidden />
+              ثبّت اللعبة والعب من غير نت
             </button>
           )}
           {!pwa.canInstall && pwa.showIosHint && (

@@ -1,0 +1,108 @@
+/** Tunables and content for the passenger-pickup mode ("وصلني يا معلم"). */
+
+export const STREET = {
+  lanes: 3,
+  laneWidth: 3.4,
+  /** Painted shoulder on each side inside the curbs. */
+  shoulder: 1.0,
+  sidewalk: 3.4,
+  curbHeight: 0.16,
+} as const;
+
+/** Half width of the asphalt (lanes + shoulders). */
+export const ROAD_HALF = (STREET.lanes * STREET.laneWidth) / 2 + STREET.shoulder;
+
+/** Lateral center of lane i measured from the road centerline (+ = right). */
+export function streetLane(i: number): number {
+  return (i - (STREET.lanes - 1) / 2) * STREET.laneWidth;
+}
+
+export const MISSION = {
+  /** City cruising speed (m/s ≈ 54 km/h) and acceleration back up to it. */
+  cruiseSpeed: 15,
+  accel: 5.5,
+  /** Holding the brake stops from cruise in about one second. */
+  brakeDecel: 16,
+  /** Below this speed the tuk-tuk counts as stopped. */
+  stoppedSpeed: 1.2,
+  /** Lateral steering authority fades when nearly stopped (no sideways sliding). */
+  minSteerFactor: 0.2,
+
+  /** Passenger stands this far into the route (visible from the start). */
+  passengerS: 190,
+  /** Pickup zone along the road, relative to the passenger. */
+  pickupBefore: 14,
+  pickupAfter: 5,
+  /** Driving this far past the passenger without stopping misses them. */
+  missAfter: 9,
+  /** Seconds the tuk-tuk must stay stopped inside the zone. */
+  holdS: 0.9,
+  boardingS: 1.5,
+  dialogueS: 3.2,
+  /** Drop-off zone length centered on the destination point. */
+  dropHalf: 12,
+  arrivingS: 1.6,
+
+  /** Route shape. */
+  firstStraight: 340,
+  turnRadius: 36,
+  segmentMin: 170,
+  segmentMax: 270,
+  turnsMin: 3,
+  turnsMax: 4,
+  finalStraight: 230,
+  /** Destination point this far before the route end. */
+  dropFromEnd: 90,
+
+  /** Traffic. */
+  trafficMax: 9,
+  trafficSpeedMin: 6.5,
+  trafficSpeedMax: 11,
+  /** Keep the curb lane clear of traffic spawns around pickup/drop-off points. */
+  clearCurbLaneRadius: 55,
+  /** Time limit = route length / this speed + slack. */
+  timeLimitSpeed: 9,
+  timeLimitSlack: 25,
+
+  /** Scoring. */
+  baseScore: 100,
+  timeBonusPerSecond: 3,
+  /** Stopping within this distance of the passenger earns a precision bonus. */
+  precisePickupDistance: 4,
+  precisionBonus: 40,
+} as const;
+
+export interface Destination {
+  id: string;
+  name: string;
+  /** What the passenger says when boarding. */
+  line: string;
+  /** Big sign at the destination. */
+  sign: string;
+  kind: "station" | "square" | "avenue" | "metro" | "market";
+}
+
+export const DESTINATIONS: Destination[] = [
+  { id: "ramses", name: "رمسيس", line: "لو سمحت يا معلم، وصلني رمسيس.", sign: "محطة رمسيس", kind: "station" },
+  { id: "midan", name: "الميدان", line: "ممكن تروح بيا عند الميدان؟", sign: "الميدان", kind: "square" },
+  { id: "main", name: "الشارع الرئيسي", line: "على أقرب شارع رئيسي يا أسطى.", sign: "الشارع الرئيسي", kind: "avenue" },
+  { id: "metro", name: "محطة المترو", line: "وصلني المترو بسرعة الله يخليك، متأخر على الشغل!", sign: "محطة المترو", kind: "metro" },
+  { id: "souq", name: "السوق", line: "على السوق يا ابني، ورايا طلبات كتير.", sign: "سوق الخضار", kind: "market" },
+];
+
+export const MISSION_TEXT = {
+  intro: "في زبون مستنيك! قرّب منه ووقف عشان يركب",
+  pickupPrompt: "اقف هنا عشان الزبون يركب",
+  holdPrompt: "خليك واقف.. بيركب",
+  dropPrompt: "اقف في المكان المنوّر عشان ينزل",
+  arrived: "وصلنا بالسلامة يا باشا!",
+  thanks: ["تسلم إيدك يا معلم 🙏", "الله يكرمك يا أسطى!", "مشوار حلو.. شكراً يا ريس"],
+  fail: {
+    crash: { title: "خبطت يا أسطى! 💥", body: "الزبون نزل وقال: لا يا عم، أنا هكمّل مشي!" },
+    timeout: { title: "اتأخرنا قوي ⏰", body: "الزبون زهق ونزل.. حاول تبقى أسرع المرة الجاية." },
+    missedPassenger: { title: "فاتك الزبون! 😅", body: "لازم توقف جنبه في الحارة اليمين عشان يعرف يركب." },
+    missedDrop: { title: "عدّيت المكان! 🙄", body: "الزبون كان عايز ينزل عند المكان المنوّر.. ونزل زعلان." },
+  },
+} as const;
+
+export type FailReason = keyof typeof MISSION_TEXT.fail;

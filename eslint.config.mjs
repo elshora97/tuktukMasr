@@ -17,6 +17,11 @@ export default defineConfig([
       "components/game/GameCanvas.tsx",
       "components/game/TrafficManager.tsx",
       "components/game/TukTuk.tsx",
+      "components/mission/MissionController.tsx",
+      "components/mission/MissionPassenger.tsx",
+      "components/mission/MissionTraffic.tsx",
+      "components/mission/MissionWorld.tsx",
+      "components/race/RaceScene.tsx",
     ],
     rules: {
       "react-hooks/immutability": "off",

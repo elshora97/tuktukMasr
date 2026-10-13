@@ -15,7 +15,8 @@ import {
 } from "three";
 import { GeoBuilder, extrudeProfile } from "@/lib/geometryKit";
 import { createTukTukRearTexture, createTukTukSideTexture, getSoftDotTexture } from "@/lib/textures";
-import { runtime } from "@/lib/gameStore";
+import type { TukTukPose } from "@/lib/gameStore";
+import { PASSENGERS, buildSeatedPassenger } from "@/lib/passengerModels";
 import { PLAYER } from "@/lib/gameConfig";
 
 /*
@@ -30,8 +31,15 @@ import { PLAYER } from "@/lib/gameConfig";
  * Local axes: x = right, y = up, -z = forward. Rear (camera side) at +z.
  */
 
-const RED = "#b3121f";
-const RED_DARK = "#7c0b15";
+/** Paint schemes: the player's classic red, plus distinct colors for other racers. */
+export const TUKTUK_PAINTS = [
+  { main: "#b3121f", dark: "#7c0b15" },
+  { main: "#1d4fa8", dark: "#12336e" },
+  { main: "#13866f", dark: "#0b5a4a" },
+  { main: "#e0a019", dark: "#9c6c0c" },
+  { main: "#6b2c91", dark: "#47195f" },
+  { main: "#1c1c1c", dark: "#000000" },
+] as const;
 const YELLOW = "#f6c21c";
 const TEAL = "#18a39a";
 const BLACK = "#151515";
@@ -117,7 +125,7 @@ const WS_R = 1.05;
 const WS_HALF = 0.47;
 const WS_CENTER_Z = -1.12 + WS_R;
 
-function buildBody() {
+function buildBody(RED: string, RED_DARK: string) {
   const b = new GeoBuilder();
   // Floor pan
   b.box(1.24, 0.08, 2.3, 0, 0.46, 0.15, "#222");
@@ -263,7 +271,7 @@ function buildWheel(r: number, w: number) {
 }
 
 /** Front fork + steering-linked mudguard (rotates with the handlebar). */
-function buildFrontFork() {
+function buildFrontFork(RED: string) {
   const b = new GeoBuilder();
   for (const sx of [-1, 1]) b.cyl(0.026, 0.026, 0.42, sx * 0.1, 0.46, 0.02, CHROME, { segments: 6, rot: [0.12, 0, 0] });
   b.box(0.26, 0.06, 0.08, 0, 0.66, 0.04, BLACK);
@@ -308,7 +316,17 @@ function buildCharm() {
   return b.build();
 }
 
-export default function TukTuk({ shadows }: { shadows: boolean }) {
+interface TukTukProps {
+  shadows: boolean;
+  /** Pose to render; read every frame (mutable object, not React state). */
+  pose: TukTukPose;
+  /** Index into TUKTUK_PAINTS. */
+  paint?: number;
+  /** Animate small details (charm, fringe sway). Off for other racers. */
+  detailed?: boolean;
+}
+
+export default function TukTuk({ shadows, pose, paint = 0, detailed = true }: TukTukProps) {
   const root = useRef<Group>(null);
   const body = useRef<Group>(null);
   const fork = useRef<Group>(null);
@@ -318,41 +336,46 @@ export default function TukTuk({ shadows }: { shadows: boolean }) {
   const rearR = useRef<Mesh>(null);
   const fringe = useRef<Mesh>(null);
   const charm = useRef<Group>(null);
-  const motion = useRef({ prevX: runtime.playerX, vel: 0, roll: 0, yaw: 0, steer: 0, wheelRot: 0, charmA: 0, charmV: 0, t: 0 });
+  const seated = useRef<(Mesh | null)[]>([]);
+  const motion = useRef({ px: pose.x, pz: pose.z, vel: 0, roll: 0, yaw: 0, steer: 0, wheelRot: 0, charmA: 0, charmV: 0, t: 0 });
+  const scheme = TUKTUK_PAINTS[paint % TUKTUK_PAINTS.length];
 
   const geo = useMemo(
     () => ({
-      body: buildBody(),
+      body: buildBody(scheme.main, scheme.dark),
       glass: buildGlass(),
       fringe: buildFringe(),
       rearWheel: buildWheel(REAR_WHEEL_R, 0.17),
       frontWheel: buildWheel(FRONT_WHEEL_R, 0.15),
-      fork: buildFrontFork(),
+      fork: buildFrontFork(scheme.main),
       handlebar: buildHandlebar(),
       lights: buildLights(),
       charm: buildCharm(),
+      seated: PASSENGERS.map((p) => buildSeatedPassenger(p)),
     }),
-    [],
+    [scheme],
   );
 
   const mats = useMemo(() => {
-    const rearTex: Texture = createTukTukRearTexture();
-    const sideTex: Texture = createTukTukSideTexture();
+    const rearTex: Texture = createTukTukRearTexture(scheme.main);
+    const sideTex: Texture = createTukTukSideTexture(scheme.main);
     return {
       body: new MeshStandardMaterial({ vertexColors: true, roughness: 0.38, metalness: 0.18 }),
       glass: new MeshStandardMaterial({ color: "#a9d4ee", transparent: true, opacity: 0.42, roughness: 0.04, metalness: 0.5, side: DoubleSide, depthWrite: false }),
       lights: new MeshBasicMaterial({ vertexColors: true, toneMapped: false }),
       rear: new MeshStandardMaterial({ map: rearTex, roughness: 0.45 }),
-      side: new MeshStandardMaterial({ map: sideTex, roughness: 0.45, transparent: true, alphaTest: 0.1 }),
+      side: new MeshStandardMaterial({ map: sideTex, roughness: 0.45 }),
       blob: new MeshBasicMaterial({ map: getSoftDotTexture(), color: "#000000", transparent: true, opacity: 0.55, depthWrite: false }),
       rearTex,
       sideTex,
     };
-  }, []);
+  }, [scheme]);
 
   useEffect(() => {
     return () => {
-      Object.values(geo).forEach((g) => g.dispose());
+      const { seated: seatedGeos, ...rest } = geo;
+      Object.values(rest).forEach((g) => g.dispose());
+      seatedGeos.forEach((g) => g.dispose());
       mats.body.dispose();
       mats.glass.dispose();
       mats.lights.dispose();
@@ -370,45 +393,64 @@ export default function TukTuk({ shadows }: { shadows: boolean }) {
     const r = root.current;
     const bd = body.current;
     if (!r || !bd) return;
-    const crashed = runtime.crashT >= 0;
-    const x = crashed ? runtime.crashX : runtime.playerX;
-    const instVel = dt > 0 ? (x - m.prevX) / dt : 0;
-    m.prevX = x;
-    m.vel += (instVel - m.vel) * Math.min(1, dt * 12);
+    const h = pose.heading;
+    const fx = -Math.sin(h);
+    const fz = -Math.cos(h);
+    // Lateral velocity in the vehicle's own frame (right = (cos h, -sin h)).
+    const dx = pose.x - m.px;
+    const dz = pose.z - m.pz;
+    m.px = pose.x;
+    m.pz = pose.z;
+    const instVel = dt > 0 ? (dx * Math.cos(h) - dz * Math.sin(h)) / dt : 0;
+    m.vel += (Math.max(-30, Math.min(30, instVel)) - m.vel) * Math.min(1, dt * 12);
     m.t += dt;
-    r.position.x = x;
 
-    const speed = runtime.speed;
+    const speed = pose.speed;
     m.wheelRot -= (speed * dt) / REAR_WHEEL_R;
     if (rearL.current) rearL.current.rotation.x = m.wheelRot;
     if (rearR.current) rearR.current.rotation.x = m.wheelRot;
     if (frontWheel.current) frontWheel.current.rotation.x = (m.wheelRot * REAR_WHEEL_R) / FRONT_WHEEL_R;
+    seated.current.forEach((mesh, i) => {
+      if (mesh) mesh.visible = pose.passenger === i;
+    });
+    // Invulnerability flicker after a race spin-out.
+    r.visible = pose.ghost <= 0 || Math.floor(m.t * 14) % 2 === 0;
 
-    if (crashed) {
-      // Tip onto its side and skid around.
-      const t = runtime.crashT;
+    if (pose.crashT >= 0) {
+      // Tip onto its side and skid forward.
+      const t = pose.crashT;
       const e = 1 - Math.exp(-t * 6);
-      bd.rotation.z = e * 1.15 * Math.sign(m.vel || 1);
+      const side = Math.sign(m.vel || 1);
+      bd.rotation.z = e * 1.15 * side;
       bd.rotation.x = Math.sin(Math.min(t, 0.6) * 10) * 0.12 * (1 - e);
       bd.position.y = Math.max(0, Math.sin(Math.min(t * 5, Math.PI)) * 0.45);
-      r.rotation.y = e * 1.4 * Math.sign(m.vel || 1) + m.yaw;
-      r.position.z = -e * 2.2;
+      r.rotation.y = h + e * 1.4 * side + m.yaw;
+      r.position.set(pose.x + fx * e * 2.2, 0, pose.z + fz * e * 2.2);
       return;
     }
-    r.position.z = 0;
+    r.position.set(pose.x, 0, pose.z);
 
     const lean = Math.max(-1, Math.min(1, m.vel / PLAYER.maxLateralSpeed));
     m.roll += (-lean * 0.16 - m.roll) * Math.min(1, dt * 8);
     m.yaw += (-lean * 0.22 - m.yaw) * Math.min(1, dt * 10);
     m.steer += (-lean * 0.55 - m.steer) * Math.min(1, dt * 14);
-    r.rotation.y = m.yaw;
+    let spin = 0;
+    let hop = 0;
+    if (pose.spinT >= 0 && pose.spinT < 0.8) {
+      // Race spin-out: one full turn with a little hop, easing out.
+      const k = pose.spinT / 0.8;
+      spin = (1 - (1 - k) * (1 - k)) * Math.PI * 2;
+      hop = Math.sin(k * Math.PI) * 0.35;
+    }
+    r.rotation.y = h + m.yaw + spin;
     bd.rotation.z = m.roll;
     // Suspension bounce + road vibration.
     const sp = Math.min(1, speed / 45);
-    bd.position.y = Math.sin(m.t * 17) * 0.012 * (0.4 + sp) + Math.max(0, Math.sin(m.t * 3.1) * Math.sin(m.t * 7.3)) * 0.035 * sp;
-    bd.rotation.x = Math.sin(m.t * 9) * 0.006 + runtime.boost * -0.03 - sp * 0.02;
+    bd.position.y = Math.sin(m.t * 17) * 0.012 * (0.4 + sp) + Math.max(0, Math.sin(m.t * 3.1) * Math.sin(m.t * 7.3)) * 0.035 * sp + hop;
+    bd.rotation.x = Math.sin(m.t * 9) * 0.006 + pose.boost * -0.03 - sp * 0.02;
     if (fork.current) fork.current.rotation.y = m.steer;
     if (handle.current) handle.current.rotation.y = m.steer * 0.8;
+    if (!detailed) return;
     if (fringe.current) fringe.current.rotation.x = Math.sin(m.t * 11) * 0.01;
     // Pendulum charm swings with steering and bumps.
     const accel = -lean * 6 + Math.sin(m.t * 17) * 0.8;
@@ -421,7 +463,7 @@ export default function TukTuk({ shadows }: { shadows: boolean }) {
   });
 
   return (
-    <group ref={root} position={[runtime.playerX, 0, 0]}>
+    <group ref={root} position={[pose.x, 0, pose.z]}>
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.025, 0.1]} material={mats.blob} renderOrder={1}>
         <planeGeometry args={[2.0, 3.4]} />
       </mesh>
@@ -430,6 +472,17 @@ export default function TukTuk({ shadows }: { shadows: boolean }) {
         <mesh geometry={geo.lights} material={mats.lights} />
         <mesh ref={fringe} geometry={geo.fringe} material={mats.body} />
         <mesh geometry={geo.glass} material={mats.glass} renderOrder={2} />
+        {geo.seated.map((g, i) => (
+          <mesh
+            key={i}
+            ref={(el) => {
+              seated.current[i] = el;
+            }}
+            geometry={g}
+            material={mats.body}
+            visible={false}
+          />
+        ))}
         {/* Rear bumper sticker + plate */}
         <mesh position={[0, 0.78, 1.443]} rotation={[-0.035, 0, 0]} material={mats.rear}>
           <planeGeometry args={[1.0, 0.5]} />

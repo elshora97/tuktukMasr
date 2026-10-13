@@ -413,11 +413,11 @@ export function createSpeedSignTexture(limit: string) {
  * Rear panel of the tuk-tuk: the classic Egyptian bumper sticker
  * "ما تبصليش بعين ردية" plus an Arabic license plate.
  */
-export function createTukTukRearTexture() {
+export function createTukTukRearTexture(bg = "#b5141f") {
   const W = 512;
   const H = 256;
   const { c, ctx } = makeCanvas(W, H);
-  ctx.fillStyle = "#b5141f";
+  ctx.fillStyle = bg;
   ctx.fillRect(0, 0, W, H);
   // yellow trim and decorative triangles
   ctx.fillStyle = "#f6c21c";
@@ -470,11 +470,11 @@ export function createTukTukRearTexture() {
 }
 
 /** Side decal for the tuk-tuk cabin. */
-export function createTukTukSideTexture() {
+export function createTukTukSideTexture(bg = "#b5141f") {
   const W = 512;
   const H = 128;
   const { c, ctx } = makeCanvas(W, H);
-  ctx.fillStyle = "#b5141f";
+  ctx.fillStyle = bg;
   ctx.fillRect(0, 0, W, H);
   ctx.fillStyle = "#f6c21c";
   ctx.fillRect(0, H * 0.72, W, 10);
@@ -511,4 +511,31 @@ let softDot: ReturnType<typeof createSoftDotTexture> | null = null;
 export function getSoftDotTexture() {
   if (!softDot) softDot = createSoftDotTexture();
   return softDot;
+}
+
+/** Beige concrete paving tiles for city sidewalks. */
+export function createPavingTexture(seed = 21) {
+  const rnd = seeded(seed);
+  const S = 256;
+  const { c, ctx } = makeCanvas(S, S);
+  ctx.fillStyle = "#c9b99a";
+  ctx.fillRect(0, 0, S, S);
+  const n = 4;
+  const t = S / n;
+  for (let y = 0; y < n; y++) {
+    for (let x = 0; x < n; x++) {
+      const v = 185 + Math.floor(rnd() * 30);
+      ctx.fillStyle = `rgb(${v},${v - 12},${v - 34})`;
+      ctx.fillRect(x * t + 2, y * t + 2, t - 4, t - 4);
+    }
+  }
+  speckle(ctx, S, S, rnd, 2500, ["#a8987c", "#b9aa8c", "#d6c8aa"], 2);
+  // a few stains and cracked tiles
+  for (let i = 0; i < 6; i++) {
+    ctx.fillStyle = "rgba(80,66,48,0.18)";
+    ctx.beginPath();
+    ctx.ellipse(rnd() * S, rnd() * S, 6 + rnd() * 14, 4 + rnd() * 10, rnd() * 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  return toTexture(c);
 }

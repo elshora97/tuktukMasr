@@ -1,0 +1,208 @@
+/**
+ * Race rules + simulation shared by the browser and the authoritative race
+ * server. No DOM / three.js imports: the server runs this file directly.
+ *
+ * Fairness model: every racer drives the same finite course. Traffic is
+ * generated from the room's seed and *all* traffic moves at one common speed,
+ * so the obstacle course is identical for everyone regardless of when they
+ * reach it. Clients only send their steering position; the server integrates
+ * each racer's progress, detects crashes and decides finishing order.
+ */
+import { LANES, PLAYER, VEHICLES, VEHICLE_TYPES, laneCenter, type VehicleType } from "../gameConfig";
+import { seeded } from "../prng";
+
+export const RACE = {
+  /** Course length in meters. */
+  distance: 2400,
+  minPlayers: 2,
+  maxPlayers: 6,
+  countdownMs: 3600,
+  tickHz: 20,
+  /** Common traffic speed (m/s). */
+  trafficSpeed: 11,
+  startSpeed: 21,
+  endSpeed: 36,
+  /** Acceleration back up to race speed after a spin-out. */
+  recoverAccel: 12,
+  /** Seconds stopped after hitting a car, then seconds of invulnerability. */
+  stunS: 1.3,
+  ghostS: 1.4,
+  /** After the first finisher, others get this long before results lock. */
+  finishGraceS: 25,
+  /** Hard cap on a race's duration. */
+  maxRaceS: 300,
+  roomIdLength: 5,
+  reconnectGraceMs: 20000,
+  roomIdleMs: 15 * 60 * 1000,
+  nameMax: 16,
+  /** Steering can't move faster than this (m/s) — server-side sanity clamp. */
+  maxLateralSpeed: PLAYER.maxLateralSpeed * 1.35,
+} as const;
+
+export const ROOM_ID_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+export const ROOM_ID_RE = new RegExp(`^[${ROOM_ID_ALPHABET}]{${RACE.roomIdLength}}$`);
+
+export function normalizeRoomId(raw: string) {
+  return raw.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+
+/** Strip control chars / markup-ish chars, collapse spaces, trim to length. */
+export function sanitizeName(raw: unknown): string {
+  if (typeof raw !== "string") return "";
+  return raw
+    .replace(/[\u0000-\u001f\u007f<>]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, RACE.nameMax);
+}
+
+export function raceSpeedFor(d: number, distance: number) {
+  const k = Math.min(1, Math.max(0, d / distance));
+  return RACE.startSpeed + (RACE.endSpeed - RACE.startSpeed) * k;
+}
+
+// ---------------------------------------------------------------------------
+// Deterministic traffic
+
+export interface RaceCar {
+  type: VehicleType;
+  lane: number;
+  /** Center position along the course at race time t = 0. */
+  s0: number;
+  x: number;
+  halfW: number;
+  halfL: number;
+}
+
+const ESCAPE = PLAYER.halfLength * 2 + 3.5;
+
+/**
+ * Rows of 1–2 cars with growing density; a car is only placed if at least one
+ * lane stays open (with room for the tuk-tuk) around it. Because every car
+ * moves at the same speed, this static check holds for the whole race.
+ * Returned sorted by s0.
+ */
+export function generateRaceTraffic(seed: number, distance: number): RaceCar[] {
+  const rnd = seeded(seed);
+  const cars: RaceCar[] = [];
+  let s = 95;
+  while (s < distance + 220) {
+    const progress = Math.min(1, s / distance);
+    const perRow = rnd() < 0.25 + progress * 0.45 ? 2 : 1;
+    const lanes = Array.from({ length: LANES.count }, (_, i) => i).sort(() => rnd() - 0.5);
+    let placed = 0;
+    for (const lane of lanes) {
+      if (placed >= perRow) break;
+      const type = VEHICLE_TYPES[Math.floor(rnd() * VEHICLE_TYPES.length)];
+      const spec = VEHICLES[type];
+      const cs = s + (rnd() - 0.5) * 6;
+      // Would this complete a wall? Count lanes blocked near cs.
+      const blocked = new Set<number>([lane]);
+      for (let i = cars.length - 1; i >= 0 && cars[i].s0 > cs - 40; i--) {
+        const o = cars[i];
+        if (Math.abs(o.s0 - cs) < o.halfL + spec.halfLength + ESCAPE) blocked.add(o.lane);
+        if (o.lane === lane && Math.abs(o.s0 - cs) < o.halfL + spec.halfLength + 6) blocked.add(-1);
+      }
+      if (blocked.has(-1) || blocked.size >= LANES.count) continue;
+      const wiggle = LANES.width / 2 - spec.halfWidth - 0.25;
+      cars.push({
+        type,
+        lane,
+        s0: cs,
+        x: laneCenter(lane) + (rnd() * 2 - 1) * Math.max(0, wiggle) * 0.5,
+        halfW: spec.halfWidth,
+        halfL: spec.halfLength,
+      });
+      placed++;
+    }
+    const gap = 30 - progress * 13 + rnd() * 14;
+    s += gap;
+  }
+  cars.sort((a, b) => a.s0 - b.s0);
+  return cars;
+}
+
+/** Index of the first car with s0 >= value (binary search). */
+export function lowerBound(cars: RaceCar[], value: number) {
+  let lo = 0;
+  let hi = cars.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (cars[mid].s0 < value) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
+// ---------------------------------------------------------------------------
+// Racer simulation (identical on client prediction and server authority)
+
+export interface RacerSim {
+  d: number;
+  x: number;
+  speed: number;
+  /** Seconds left stopped after a crash. */
+  stun: number;
+  /** Seconds left of invulnerability after a stun. */
+  ghost: number;
+  finished: boolean;
+  /** Race time (s) when the finish line was crossed. */
+  finishTime: number | null;
+  hits: number;
+}
+
+export function makeRacer(): RacerSim {
+  return { d: 0, x: laneCenter(1), speed: 0, stun: 0, ghost: 0, finished: false, finishTime: null, hits: 0 };
+}
+
+/** Player starting x for slot i (spread over lanes). */
+export function startX(slot: number) {
+  return laneCenter([1, 2, 0, 3, 1, 2][slot % 6]);
+}
+
+const HIT_SHRINK_SERVER = 0.06;
+
+/**
+ * Advance one racer by dt at race time t (seconds since the start).
+ * Returns true when a crash happened during this step.
+ */
+export function stepRacer(r: RacerSim, x: number, dt: number, t: number, traffic: RaceCar[], distance: number): boolean {
+  r.x = x;
+  if (r.stun > 0) {
+    r.stun -= dt;
+    r.speed = 0;
+    if (r.stun <= 0) {
+      r.stun = 0;
+      r.ghost = RACE.ghostS;
+    }
+    return false;
+  }
+  if (r.ghost > 0) r.ghost = Math.max(0, r.ghost - dt);
+  const target = r.finished ? RACE.startSpeed : raceSpeedFor(r.d, distance);
+  r.speed = r.speed < target ? Math.min(target, r.speed + RACE.recoverAccel * dt) : target;
+  const prev = r.d;
+  r.d += r.speed * dt;
+  if (!r.finished && r.d >= distance) {
+    r.finished = true;
+    const frac = r.speed > 0 ? (distance - prev) / (r.speed * dt) : 1;
+    r.finishTime = t - dt + dt * Math.min(1, Math.max(0, frac));
+  }
+  if (r.finished || r.ghost > 0) return false;
+
+  // Collision: traffic center at s0 + V t. Search cars near the player.
+  const shift = RACE.trafficSpeed * t;
+  const pHalfW = PLAYER.halfWidth - PLAYER.hitShrinkX - HIT_SHRINK_SERVER;
+  const pHalfL = PLAYER.halfLength - PLAYER.hitShrinkZ - HIT_SHRINK_SERVER;
+  for (let i = lowerBound(traffic, r.d - shift - 8); i < traffic.length; i++) {
+    const c = traffic[i];
+    const cs = c.s0 + shift;
+    if (cs > r.d + 8) break;
+    if (Math.abs(cs - r.d) < c.halfL * 0.94 + pHalfL && Math.abs(c.x - r.x) < c.halfW * 0.9 + pHalfW) {
+      r.stun = RACE.stunS;
+      r.speed = 0;
+      r.hits++;
+      return true;
+    }
+  }
+  return false;
+}

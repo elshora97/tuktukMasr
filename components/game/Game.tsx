@@ -11,6 +11,12 @@ import GameHUD from "./GameHUD";
 import StartScreen from "./StartScreen";
 import GameOverScreen from "./GameOverScreen";
 import OvertakeLabels from "./OvertakeLabel";
+import MissionHUD from "../mission/MissionHUD";
+import RaceMenu from "../race/RaceMenu";
+import RaceHUD from "../race/RaceHUD";
+import { useRaceState } from "@/hooks/useRaceState";
+import { raceActions } from "@/lib/race/raceClient";
+import { gameStore } from "@/lib/gameStore";
 
 // Three.js must only run in the browser.
 const GameCanvas = dynamic(() => import("./GameCanvas"), { ssr: false });
@@ -69,10 +75,29 @@ export default function Game() {
   const showGameOver = useGameState((s) => s.showGameOver);
   const sound = useGameState((s) => s.sound);
   const quality = useGameState((s) => s.quality);
+  const mode = useGameState((s) => s.mode);
+  const racePhase = useRaceState((s) => s.room?.phase ?? null);
 
   useEffect(() => {
     audio.setMuted(!sound);
   }, [sound]);
+
+  // Online race: the room's phase drives the game status (lobby = menu scene, countdown..results = race scene).
+  useEffect(() => {
+    const g = gameStore.getState();
+    if (g.mode !== "race") return;
+    const inRace = racePhase !== null && racePhase !== "lobby";
+    if (inRace && g.status === "menu") gameActions.enterMode("race", "playing");
+    else if (!inRace && g.status !== "menu") gameActions.toMenu("race");
+  }, [racePhase, mode]);
+
+  // Invite links (?room=ABCDE) open the race menu with the code filled in.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).has("room")) {
+      gameActions.toMenu("race");
+      void raceActions.open();
+    }
+  }, []);
 
   // Pause and silence when the tab is hidden or the phone locks.
   useEffect(() => {
@@ -94,10 +119,13 @@ export default function Game() {
       {!fontsReady && <Loading />}
       {fontsReady && (
         <>
-          <OvertakeLabels />
-          {status === "menu" && <StartScreen />}
-          {(status === "playing" || status === "paused") && <GameHUD />}
-          {status === "gameOver" && showGameOver && <GameOverScreen />}
+          {mode === "endless" && <OvertakeLabels />}
+          {status === "menu" && mode === "endless" && <StartScreen />}
+          {status === "menu" && mode === "race" && <RaceMenu />}
+          {mode === "endless" && (status === "playing" || status === "paused") && <GameHUD />}
+          {mode === "endless" && status === "gameOver" && showGameOver && <GameOverScreen />}
+          {mode === "taxi" && status !== "menu" && <MissionHUD />}
+          {mode === "race" && status !== "menu" && <RaceHUD />}
         </>
       )}
     </main>

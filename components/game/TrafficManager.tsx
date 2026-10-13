@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef } from "react";
-import { useFrame, useThree } from "@react-three/fiber";
+import { useFrame } from "@react-three/fiber";
 import { Color, Euler, InstancedMesh, Matrix4, MeshBasicMaterial, PlaneGeometry, Quaternion, Vector3 } from "three";
 import {
   LANES,
@@ -14,16 +14,20 @@ import {
   laneCenter,
   oppLaneCenter,
   LAYOUT,
+  LABELS,
   type VehicleType,
 } from "@/lib/gameConfig";
 import { aabbOverlap, isSpawnFair, playerHitBox, TRAFFIC_HIT_SCALE_X, TRAFFIC_HIT_SCALE_Z, type Box2, type LaneOccupant } from "@/lib/collision";
 import { gameActions, gameStore, runtime } from "@/lib/gameStore";
 import { audio } from "@/lib/audio";
 import { getSoftDotTexture } from "@/lib/textures";
+import { clearAnchors, setAnchorTarget } from "@/lib/screenAnchors";
 import TrafficCar, { HIDDEN_MATRIX, LIGHT_BRAKE, LIGHT_NORMAL, type TrafficTypeMeshes } from "./TrafficCar";
 
 interface Car extends LaneOccupant {
   active: boolean;
+  /** Incremented on every spawn so anchors can detect a recycled pool slot. */
+  serial: number;
   type: VehicleType;
   slot: number;
   x: number;
@@ -50,7 +54,6 @@ const tmpQ = new Quaternion();
 const tmpE = new Euler();
 const tmpP = new Vector3();
 const tmpS = new Vector3(1, 1, 1);
-const tmpV = new Vector3();
 const playerBox: Box2 = { x: 0, z: 0, halfW: 0, halfL: 0 };
 const carBox: Box2 = { x: 0, z: 0, halfW: 0, halfL: 0 };
 
@@ -74,7 +77,6 @@ function shuffle<T>(arr: T[]): T[] {
 }
 
 export default function TrafficManager({ shadows }: { shadows: boolean }) {
-  const camera = useThree((s) => s.camera);
   const meshes = useRef<Partial<Record<VehicleType, TrafficTypeMeshes>>>({});
   const shadowMesh = useRef<InstancedMesh>(null);
 
@@ -84,6 +86,7 @@ export default function TrafficManager({ shadows }: { shadows: boolean }) {
       for (let slot = 0; slot < TRAFFIC.poolPerType; slot++) {
         list.push({
           active: false,
+          serial: 0,
           type,
           slot,
           lane: 0,
@@ -159,6 +162,7 @@ export default function TrafficManager({ shadows }: { shadows: boolean }) {
         const cand: LaneOccupant = { lane, z, halfL: cspec.halfLength, speed };
         if (!menu && !isSpawnFair(cand, active.current, S)) continue;
         car.active = true;
+        car.serial++;
         car.lane = lane;
         car.z = z;
         car.speed = speed;
@@ -197,6 +201,7 @@ export default function TrafficManager({ shadows }: { shadows: boolean }) {
     (status: string) => {
       for (const c of cars) if (c.active) hideCar(c);
       active.current = [];
+      clearAnchors("label-");
       const menu = status === "menu";
       if (menu) {
         for (let z = -150; z < -6; z += 9 + Math.random() * 10) trySpawn(z, MENU_LANES, true);
@@ -336,11 +341,29 @@ export default function TrafficManager({ shadows }: { shadows: boolean }) {
         }
         if (!c.passed && c.z - c.halfL > PLAYER.halfLength) {
           c.passed = true;
-          const closeCall = c.overlapped && c.minGap < TRAFFIC.closeCallDistance;
-          tmpV.set(runtime.playerX, 2.6, 0).project(camera);
-          const sx = Math.min(85, Math.max(15, ((tmpV.x + 1) / 2) * 100));
-          const sy = Math.min(70, Math.max(20, ((1 - tmpV.y) / 2) * 100));
-          gameActions.overtake(closeCall, sx, sy);
+          const closeCall = c.overlapped && c.minGap < LABELS.closeOvertakeGap;
+          const labelId = gameActions.overtake(closeCall);
+          if (labelId !== null) {
+            // Pin the label above the car that was just passed.
+            const car = c;
+            const serial = c.serial;
+            const roof = VEHICLES[c.type].height + 0.35;
+            let exitedAt = 0;
+            setAnchorTarget(
+              "label-" + labelId,
+              (out) => {
+                if (!car.active || car.serial !== serial) return false;
+                if (car.z > LABELS.carExitZ) {
+                  const now = performance.now();
+                  if (!exitedAt) exitedAt = now;
+                  else if (now - exitedAt > LABELS.lingerAfterExitMs) return false;
+                }
+                out.set(car.x, roof, Math.min(car.z, LABELS.anchorMaxZ));
+                return true;
+              },
+              { onLost: () => gameActions.removeLabel(labelId) },
+            );
+          }
           audio.overtake(closeCall);
           runtime.boost = 1;
           if (closeCall && Math.random() < 0.7) {

@@ -10,20 +10,20 @@ import {
 } from "./gameConfig";
 
 export type GameStatus = "menu" | "playing" | "paused" | "gameOver";
+/** endless = original single player; race = online race; taxi = passenger missions. */
+export type GameMode = "endless" | "race" | "taxi";
 export type Quality = "high" | "low";
 
+/** A close-overtake shout-out. Its on-screen position follows the passed car (see screenAnchors). */
 export interface FloatingLabel {
   id: number;
   text: string;
   sub: string;
-  kind: "overtake" | "close";
-  /** Screen position in percent of the game viewport. */
-  x: number;
-  y: number;
 }
 
 export interface GameUIState {
   status: GameStatus;
+  mode: GameMode;
   score: number;
   best: number;
   isNewBest: boolean;
@@ -42,6 +42,32 @@ export interface GameUIState {
 
 /** The tuk-tuk starts in lane 2 (menu traffic keeps that lane clear). */
 const START_X = laneCenter(2);
+
+/**
+ * Everything a tuk-tuk needs to render itself. The player's pose lives in
+ * runtime.pose and is written by whichever mode controller is active; remote
+ * racers each own one too.
+ */
+export interface TukTukPose {
+  x: number;
+  z: number;
+  /** Model yaw (rotation.y); 0 = facing -z. */
+  heading: number;
+  speed: number;
+  /** Seconds since a crash (tip-over animation), −1 = none. */
+  crashT: number;
+  /** Seconds into a race spin-out, −1 = none. */
+  spinT: number;
+  /** >0 while invulnerable after a spin-out (renders flickering). */
+  ghost: number;
+  boost: number;
+  /** Seated passenger variant, −1 = empty. */
+  passenger: number;
+}
+
+export function makePose(): TukTukPose {
+  return { x: START_X, z: 0, heading: 0, speed: 0, crashT: -1, spinT: -1, ghost: 0, boost: 0, passenger: -1 };
+}
 
 /**
  * High-frequency state read and written by the render loop. Never triggers
@@ -67,6 +93,9 @@ export const runtime = {
   hornRequested: false,
   /** Dev/test only: disables collisions (used by the automated fairness test). */
   godMode: false,
+  /** Held brake (taxi mode): keyboard ↓/S or the on-screen pedal. */
+  brake: false,
+  pose: makePose(),
 };
 
 function resetRuntime() {
@@ -81,6 +110,8 @@ function resetRuntime() {
   runtime.shake = 0;
   runtime.lastLabelAt = 0;
   runtime.boost = 0;
+  runtime.brake = false;
+  Object.assign(runtime.pose, makePose());
 }
 
 function readNumber(key: string): number {
@@ -121,6 +152,7 @@ function detectQuality(): Quality {
 
 const initialState: GameUIState = {
   status: "menu",
+  mode: "endless",
   score: 0,
   best: 0,
   isNewBest: false,
@@ -178,6 +210,7 @@ export const gameActions = {
     clearLabels();
     setState({
       status: "playing",
+      mode: "endless",
       score: 0,
       overtakes: 0,
       closeCalls: 0,
@@ -189,7 +222,8 @@ export const gameActions = {
   },
 
   pause() {
-    if (state.status === "playing" && runtime.crashT < 0) setState({ status: "paused" });
+    // Online races cannot be paused (the server keeps simulating).
+    if (state.status === "playing" && state.mode !== "race" && runtime.crashT < 0) setState({ status: "paused" });
   },
 
   resume() {
@@ -225,45 +259,60 @@ export const gameActions = {
     if (state.status === "gameOver" && !state.showGameOver) setState({ showGameOver: true });
   },
 
-  toMenu() {
+  /** Back to the attract scene. `mode` picks which menu is shown (race = race lobby screens). */
+  toMenu(mode: GameMode = "endless") {
     resetRuntime();
     runtime.speed = SPEED.menuCruise;
     clearLabels();
-    setState({ status: "menu", showGameOver: false, labels: [], score: 0, runId: state.runId + 1 });
+    setState({ status: "menu", mode, showGameOver: false, labels: [], score: 0, runId: state.runId + 1 });
   },
 
-  /** Award an overtake. Labels are throttled; points never are. */
-  overtake(closeCall: boolean, screenX: number, screenY: number) {
-    if (state.status !== "playing") return;
+  /** Enter a non-endless mode's own flow (controllers watch runId to reset). */
+  enterMode(mode: GameMode, status: GameStatus) {
+    resetRuntime();
+    clearLabels();
+    setState({ mode, status, showGameOver: false, labels: [], score: 0, runId: state.runId + 1 });
+  },
+
+  setStatus(status: GameStatus) {
+    if (state.status !== status) setState({ status });
+  },
+
+  /**
+   * Award an overtake. Every pass scores; only close passes may get a label
+   * (throttled by cooldown and max visible). Returns the new label id, or null.
+   */
+  overtake(closeCall: boolean): number | null {
+    if (state.status !== "playing") return null;
     const points = SCORE.overtake + (closeCall ? SCORE.closeCallBonus : 0);
     const patch: Partial<GameUIState> = {
       score: state.score + points,
       overtakes: state.overtakes + 1,
       closeCalls: state.closeCalls + (closeCall ? 1 : 0),
     };
+    let id: number | null = null;
     const now = performance.now();
-    const canLabel =
-      state.labels.length < LABELS.maxVisible && now - runtime.lastLabelAt > LABELS.minIntervalMs;
-    if (canLabel || closeCall) {
+    if (closeCall && state.labels.length < LABELS.maxVisible && now - runtime.lastLabelAt > LABELS.cooldownMs) {
       runtime.lastLabelAt = now;
-      const kept = state.labels.length >= LABELS.maxVisible ? state.labels.slice(1) : state.labels;
       const label: FloatingLabel = {
         id: labelId++,
-        text: closeCall ? pick(CLOSE_CALL_MESSAGES) : pick(OVERTAKE_MESSAGES),
-        sub: `+${points} نقطة`,
-        kind: closeCall ? "close" : "overtake",
-        // Stagger so labels that overlap in time don't sit on top of each other.
-        x: screenX + (Math.random() * 2 - 1) * 9,
-        y: screenY - kept.length * 11,
+        text: pick(Math.random() < 0.5 ? CLOSE_CALL_MESSAGES : OVERTAKE_MESSAGES),
+        sub: "+" + points,
       };
-      patch.labels = [...kept, label];
+      id = label.id;
+      patch.labels = [...state.labels, label];
       const timer = setTimeout(() => {
         labelTimers.delete(timer);
-        setState({ labels: state.labels.filter((l) => l.id !== label.id) });
+        gameActions.removeLabel(label.id);
       }, LABELS.lifetimeMs);
       labelTimers.add(timer);
     }
     setState(patch);
+    return id;
+  },
+
+  removeLabel(id: number) {
+    if (state.labels.some((l) => l.id === id)) setState({ labels: state.labels.filter((l) => l.id !== id) });
   },
 
   setSound(sound: boolean) {

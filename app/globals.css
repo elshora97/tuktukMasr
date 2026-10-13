@@ -95,31 +95,26 @@ body {
   box-shadow: 0 1px 0 var(--color-ink);
 }
 
-/* Floating overtake label */
-@keyframes label-pop {
+/* Close-overtake label: small pill, quick fade in, hold, gentle fade out. */
+@keyframes close-label {
   0% {
     opacity: 0;
-    transform: translate(-50%, -40%) scale(0.4) rotate(-6deg);
+    transform: translateY(6px) scale(0.9);
   }
-  14% {
+  12% {
     opacity: 1;
-    transform: translate(-50%, -100%) scale(1.18) rotate(2deg);
+    transform: none;
   }
-  26% {
-    transform: translate(-50%, -110%) scale(1) rotate(-1deg);
-  }
-  75% {
+  70% {
     opacity: 1;
-    transform: translate(-50%, -175%) scale(1) rotate(0deg);
   }
   100% {
     opacity: 0;
-    transform: translate(-50%, -220%) scale(0.92);
+    transform: translateY(-10px);
   }
 }
-.overtake-label {
-  animation: label-pop 1.15s cubic-bezier(0.2, 0.9, 0.3, 1.1) forwards;
-  will-change: transform, opacity;
+.close-label {
+  animation: close-label 1.5s ease-out forwards;
 }
 
 @keyframes rise-in {
@@ -181,6 +176,9 @@ body {
   .wobble,
   .swipe-hint {
     animation: none;
+  }
+  .close-label {
+    animation-name: none;
   }
   .rise-in {
     animation-duration: 0.01s;

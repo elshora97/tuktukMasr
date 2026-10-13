@@ -89,7 +89,6 @@ export const TRAFFIC = {
   lookaheadSeconds: 7,
   lookaheadStep: 0.12,
   poolPerType: 8,
-  closeCallDistance: 0.9,
 } as const;
 
 export const SCORE = {
@@ -97,10 +96,32 @@ export const SCORE = {
   closeCallBonus: 15,
 } as const;
 
+/**
+ * Floating shout-outs. Ordinary overtakes only score; a label appears just
+ * for genuinely close passes, anchored to the car that was passed.
+ */
 export const LABELS = {
-  maxVisible: 3,
-  minIntervalMs: 280,
-  lifetimeMs: 1150,
+  /**
+   * Max side-to-side gap (meters, body edge to body edge) during the pass for
+   * it to count as a close overtake. Lane-center to lane-center passes leave
+   * ~1.8 m, so 0.6 m means the player squeezed right next to the car.
+   */
+  closeOvertakeGap: 0.6,
+  /** Minimum time between two labels. */
+  cooldownMs: 1400,
+  maxVisible: 2,
+  /** Hard cap on a label's life. */
+  lifetimeMs: 1500,
+  /**
+   * The label rides on the passed car but never slides further back than
+   * this z (just beside the tuk-tuk's rear), so it stays readable for a moment
+   * instead of vanishing with the car — and never covers the road ahead.
+   */
+  anchorMaxZ: 1.2,
+  /** Car z at which it has left the chase camera's view. */
+  carExitZ: 6,
+  /** Time the label lingers (fading) after its car left the view. 0 = remove at once. */
+  lingerAfterExitMs: 550,
 } as const;
 
 /** Egyptian colloquial overtake messages. */
@@ -138,6 +159,8 @@ export type VehicleType = "taxi" | "sedan" | "microbus" | "suv" | "pickup";
 
 export interface VehicleSpec {
   type: VehicleType;
+  /** Roof height in meters (label anchor). */
+  height: number;
   halfWidth: number;
   halfLength: number;
   /** Relative spawn weight. */
@@ -151,6 +174,7 @@ export interface VehicleSpec {
 export const VEHICLES: Record<VehicleType, VehicleSpec> = {
   taxi: {
     type: "taxi",
+    height: 1.75,
     halfWidth: 0.88,
     halfLength: 2.15,
     weight: 3,
@@ -159,6 +183,7 @@ export const VEHICLES: Record<VehicleType, VehicleSpec> = {
   },
   sedan: {
     type: "sedan",
+    height: 1.45,
     halfWidth: 0.9,
     halfLength: 2.2,
     weight: 3,
@@ -167,6 +192,7 @@ export const VEHICLES: Record<VehicleType, VehicleSpec> = {
   },
   microbus: {
     type: "microbus",
+    height: 2.15,
     halfWidth: 1.0,
     halfLength: 2.55,
     weight: 2,
@@ -175,6 +201,7 @@ export const VEHICLES: Record<VehicleType, VehicleSpec> = {
   },
   suv: {
     type: "suv",
+    height: 1.95,
     halfWidth: 1.0,
     halfLength: 2.4,
     weight: 1.4,
@@ -183,6 +210,7 @@ export const VEHICLES: Record<VehicleType, VehicleSpec> = {
   },
   pickup: {
     type: "pickup",
+    height: 1.95,
     halfWidth: 0.86,
     halfLength: 2.1,
     weight: 1.2,

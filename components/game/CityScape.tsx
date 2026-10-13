@@ -26,7 +26,7 @@ const CHUNK_PERIOD = CHUNK_LEN * 2;
 const CHUNK_MAX_Z = 400;
 const NILE_X = 70;
 
-const FACADE_COLORS = ["#e8d6b5", "#d9c09a", "#d6a873", "#d8b4a0", "#ece6da", "#e9d9a0", "#c99a74", "#bdb5a8", "#e3cfc0", "#cfc3a8"];
+export const FACADE_COLORS = ["#e8d6b5", "#d9c09a", "#d6a873", "#d8b4a0", "#ece6da", "#e9d9a0", "#c99a74", "#bdb5a8", "#e3cfc0", "#cfc3a8"];
 
 /** Building variants: [width, height, depth]. Window UVs tile to real size. */
 const VARIANTS: [number, number, number][] = [
@@ -35,7 +35,7 @@ const VARIANTS: [number, number, number][] = [
   [17, 12, 12],
 ];
 
-function buildingGeometry(w: number, h: number, d: number) {
+export function buildingGeometry(w: number, h: number, d: number) {
   const g = new BoxGeometry(w, h, d);
   g.translate(0, h / 2, 0);
   const uv = g.getAttribute("uv");

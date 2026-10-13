@@ -114,6 +114,11 @@ class AudioEngine {
     }
     const ctx = new AC();
     this.ctx = ctx;
+    // No usable audio device (or the renderer died): go silent instead of erroring every frame.
+    ctx.addEventListener?.("error", () => {
+      this.failed = true;
+      this.ctx = null;
+    });
 
     const comp = ctx.createDynamicsCompressor();
     comp.threshold.value = -14;
@@ -294,6 +299,51 @@ class AudioEngine {
       o.stop(t + 0.25);
       t += step;
     }
+  }
+
+  /** Short beep (race countdown): low beeps then a high "go". */
+  beep(high = false) {
+    const ctx = this.ctx;
+    if (!ctx || !this.master || ctx.state !== "running") return;
+    const t = ctx.currentTime + 0.005;
+    const o = ctx.createOscillator();
+    o.type = "square";
+    o.frequency.value = high ? 880 : 440;
+    const g = ctx.createGain();
+    const dur = high ? 0.45 : 0.16;
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.12, t + 0.01);
+    g.gain.setValueAtTime(0.12, t + dur - 0.04);
+    g.gain.linearRampToValueAtTime(0, t + dur);
+    const f = ctx.createBiquadFilter();
+    f.type = "lowpass";
+    f.frequency.value = 2200;
+    o.connect(f).connect(g).connect(this.master);
+    o.start(t);
+    o.stop(t + dur + 0.02);
+  }
+
+  /** Mission complete / race win: rising maqam-flavored phrase + double honk. */
+  fanfare() {
+    const ctx = this.ctx;
+    if (!ctx || !this.master || ctx.state !== "running") return;
+    const notes = [587.3, 622.3, 740, 784, 880, 1174.7];
+    let t = ctx.currentTime + 0.01;
+    notes.forEach((f, i) => {
+      const o = ctx.createOscillator();
+      o.type = "triangle";
+      o.frequency.value = f;
+      const g = ctx.createGain();
+      const len = i === notes.length - 1 ? 0.5 : 0.13;
+      g.gain.setValueAtTime(0, t);
+      g.gain.linearRampToValueAtTime(0.13, t + 0.012);
+      g.gain.exponentialRampToValueAtTime(0.0008, t + len);
+      o.connect(g).connect(this.master!);
+      o.start(t);
+      o.stop(t + len + 0.02);
+      t += 0.1;
+    });
+    setTimeout(() => this.horn({ gain: 0.14, pitch: 1.1, beeps: 2 }), 750);
   }
 
   crash() {

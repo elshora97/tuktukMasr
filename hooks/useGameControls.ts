@@ -61,10 +61,17 @@ export function useGameControls(surface: RefObject<HTMLElement | null>) {
       if (e.pointerId === dragId) dragId = null;
     };
 
+    // Typing a name or room code must not steer, brake or pause.
+    const typing = (e: KeyboardEvent) => e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
     const onKeyDown = (e: KeyboardEvent) => {
+      if (typing(e)) return;
       const k = e.key.toLowerCase();
       const status = gameStore.getState().status;
-      if (k === "arrowleft" || k === "a") {
+      if (k === "arrowdown" || k === "s") {
+        // Brake (passenger missions).
+        runtime.brake = true;
+        e.preventDefault();
+      } else if (k === "arrowleft" || k === "a") {
         keys.left = true;
         syncKeys();
         e.preventDefault();
@@ -82,13 +89,18 @@ export function useGameControls(surface: RefObject<HTMLElement | null>) {
         gameActions.togglePause();
       } else if (k === "enter") {
         audio.unlock();
-        if (status === "menu") gameActions.start();
+        if (status === "menu" && gameStore.getState().mode === "endless") gameActions.start();
         else if (status === "paused") gameActions.resume();
         else if (status === "gameOver" && gameStore.getState().showGameOver) gameActions.start();
       }
     };
     const onKeyUp = (e: KeyboardEvent) => {
+      if (typing(e)) return;
       const k = e.key.toLowerCase();
+      if (k === "arrowdown" || k === "s") {
+        runtime.brake = false;
+        return;
+      }
       if (k === "arrowleft" || k === "a") keys.left = false;
       else if (k === "arrowright" || k === "d") keys.right = false;
       else return;
@@ -98,6 +110,7 @@ export function useGameControls(surface: RefObject<HTMLElement | null>) {
       keys.left = keys.right = false;
       syncKeys();
       runtime.padSteer = 0;
+      runtime.brake = false;
       gameActions.pause();
     };
     // Block page scroll / pull-to-refresh / pinch while on the game surface.
