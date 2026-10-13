@@ -1,0 +1,13 @@
+node_modules
+.next
+.git
+.claude
+.impeccable
+out
+public
+app
+components
+hooks
+*.md
+*.tsbuildinfo
+.env*
