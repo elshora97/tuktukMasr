@@ -350,8 +350,8 @@ export const raceActions = {
     raceNet.socket?.emit("race:again");
   },
 
-  sendInput(x: number) {
-    if (raceNet.socket?.connected) raceNet.socket.volatile.emit("race:input", { x });
+  sendInput(x: number, t: number) {
+    if (raceNet.socket?.connected) raceNet.socket.volatile.emit("race:input", { x, t: Math.round(t * 1000) / 1000 });
   },
 
   /** Leave the race mode entirely (back to the main menu). */

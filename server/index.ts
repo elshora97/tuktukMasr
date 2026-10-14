@@ -218,8 +218,13 @@ io.on("connection", (socket) => {
     }
     if (++player.inputCount > 60) return; // flood guard
     const x = Number(req?.x);
-    if (!Number.isFinite(x)) return;
-    player.inputX = Math.max(-10, Math.min(10, x));
+    const t = Number(req?.t);
+    if (!Number.isFinite(x) || !Number.isFinite(t)) return;
+    const q = player.inputs;
+    // Ignore out-of-order samples and clocks running far ahead of the race.
+    if ((q.length && t <= q[q.length - 1].t) || t > seat.room.simT + 1) return;
+    q.push({ t, x: Math.max(-10, Math.min(10, x)) });
+    if (q.length > 64) q.shift();
     player.lastInputAt = now;
   });
 

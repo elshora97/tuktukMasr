@@ -27,7 +27,10 @@ export interface ServerPlayer {
   left: boolean;
   joinedAt: number;
   sim: RacerSim;
-  inputX: number;
+  /** Steering samples stamped with the client's race time (oldest first). */
+  inputs: { t: number; x: number }[];
+  /** Race time this player's sim has reached (lags room.simT by their latency). */
+  simT: number;
   lastInputAt: number;
   /** Simple flood protection for inputs. */
   inputWindowStart: number;
@@ -100,7 +103,8 @@ export function addPlayer(room: Room, name: string, now: number): ServerPlayer {
     left: false,
     joinedAt: now,
     sim: makeRacer(),
-    inputX: startX(slot),
+    inputs: [],
+    simT: 0,
     lastInputAt: 0,
     inputWindowStart: now,
     inputCount: 0,
@@ -144,7 +148,8 @@ export function beginCountdown(room: Room, now: number) {
   for (const p of members(room)) {
     p.sim = makeRacer();
     p.sim.x = startX(p.slot);
-    p.inputX = p.sim.x;
+    p.inputs = [];
+    p.simT = 0;
   }
 }
 
@@ -160,6 +165,20 @@ export function backToLobby(room: Room) {
 }
 
 const SIM_STEP = 1 / 60;
+/** How far a player's sim may trail the room clock while waiting for their inputs. */
+const MAX_INPUT_LAG = 0.4;
+
+/** Steering x the client had at race time t (interpolated between samples). */
+function inputAt(p: ServerPlayer, t: number): number | null {
+  const q = p.inputs;
+  while (q.length > 2 && q[1].t <= t) q.shift();
+  if (q.length === 0) return null;
+  if (t <= q[0].t) return q[0].x;
+  const a = q[0];
+  const b = q[1];
+  if (!b) return a.x;
+  return a.x + ((b.x - a.x) * (t - a.t)) / Math.max(1e-6, b.t - a.t);
+}
 
 /** Advance the authoritative race to `now` in fixed 60 Hz steps; reports whether the race just ended. */
 export function simulate(room: Room, now: number): { ended: boolean } {
@@ -168,14 +187,22 @@ export function simulate(room: Room, now: number): { ended: boolean } {
   if (room.phase !== "racing") return { ended: false };
   const target = (now - room.startAt) / 1000;
   const maxLat = RACE.maxLateralSpeed;
-  while (room.simT + SIM_STEP <= target) {
-    room.simT += SIM_STEP;
-    for (const p of members(room)) {
-      // Lateral position follows the client's steering, speed-limited (no teleporting).
-      const dx = Math.max(-maxLat * SIM_STEP, Math.min(maxLat * SIM_STEP, p.inputX - p.sim.x));
+  room.simT = Math.max(room.simT, target);
+  for (const p of members(room)) {
+    // Each racer is simulated with the exact x their client had at each race time, so a
+    // close dodge on screen is a dodge here too (no hits from latency-delayed steering).
+    // A silent client is advanced anyway once it trails by MAX_INPUT_LAG.
+    const lastT = p.inputs.length ? p.inputs[p.inputs.length - 1].t : -Infinity;
+    const until = Math.min(target, Math.max(lastT, target - MAX_INPUT_LAG));
+    while (p.simT + SIM_STEP <= until) {
+      p.simT += SIM_STEP;
+      const want = inputAt(p, p.simT) ?? p.sim.x;
+      // Speed-limited (with slack for frame jitter) so clients can't teleport.
+      const lim = maxLat * SIM_STEP * 1.6;
+      const dx = Math.max(-lim, Math.min(lim, want - p.sim.x));
       const x = Math.max(-PLAYER.xLimit, Math.min(PLAYER.xLimit, p.sim.x + dx));
       const wasFinished = p.sim.finished;
-      stepRacer(p.sim, x, SIM_STEP, room.simT, room.traffic, room.distance);
+      stepRacer(p.sim, x, SIM_STEP, p.simT, room.traffic, room.distance);
       if (!wasFinished && p.sim.finished && room.firstFinishAt === null) room.firstFinishAt = now;
     }
   }
@@ -214,6 +241,7 @@ export function tick(room: Room): RaceTick {
     players: members(room).map((p) => ({
       id: p.id,
       d: round2(p.sim.d),
+      pt: Math.round(p.simT * 1000) / 1000,
       x: round2(p.sim.x),
       speed: round2(p.sim.speed),
       stun: round2(p.sim.stun),

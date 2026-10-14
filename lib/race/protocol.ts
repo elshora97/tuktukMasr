@@ -46,6 +46,8 @@ export interface RoomSnapshot {
 export interface TickPlayer {
   id: string;
   d: number;
+  /** Race time this racer's d/x/stun refer to (trails tick.t by their latency). */
+  pt: number;
   x: number;
   speed: number;
   stun: number;
@@ -84,6 +86,6 @@ export interface ClientToServer {
   "room:start": (ack: (res: Ack<object>) => void) => void;
   "room:close": () => void;
   "race:again": () => void;
-  "race:input": (req: { x: number }) => void;
+  "race:input": (req: { x: number; t: number }) => void;
   "time:ping": (clientNow: number, ack: (serverNow: number) => void) => void;
 }

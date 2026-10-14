@@ -132,11 +132,12 @@ export function RaceController() {
       }
       L.history.push({ t, d: sim.d });
       while (L.history.length > 0 && L.history[0].t < t - 2.5) L.history.shift();
-      L.sendT -= dt;
-      if (L.sendT <= 0) {
-        L.sendT = SEND_INTERVAL;
-        raceActions.sendInput(runtime.playerX);
-      }
+    }
+    // Steering samples carry our race time; the server replays them at that time.
+    L.sendT -= dt;
+    if (L.sendT <= 0 && room.phase !== "lobby") {
+      L.sendT = SEND_INTERVAL;
+      raceActions.sendInput(runtime.playerX, t);
     }
 
     // Reconcile with the newest authoritative tick for this race.
@@ -145,7 +146,7 @@ export function RaceController() {
       L.lastTickAt = latest.at;
       const mine = latest.tick.players.find((p) => p.id === myId);
       if (mine) {
-        const local = historyD(latest.tick.t);
+        const local = historyD(mine.pt);
         if (local !== null) {
           const err = mine.d - local;
           if (Math.abs(err) > 0.25) {
@@ -161,7 +162,7 @@ export function RaceController() {
           sim.speed = 0;
           runtime.pose.spinT = 0;
           L.lastHitT = t;
-        } else if (sim.stun > 0 && mine.stun <= 0 && mine.ghost <= 0 && latest.tick.t > L.lastHitT + 0.3) {
+        } else if (sim.stun > 0 && mine.stun <= 0 && mine.ghost <= 0 && mine.pt > L.lastHitT + 0.3) {
           // We predicted a crash the server didn't confirm: drive on.
           sim.stun = 0;
         }
@@ -183,8 +184,11 @@ export function RaceController() {
       let ta = 0;
       let tb = 0;
       for (let i = ticks.length - 1; i >= 0; i--) {
-        const tp = ticks[i].tick.players.find((x) => x.id === p.id);
-        if (!tp) continue;
+        const raw = ticks[i].tick.players.find((x) => x.id === p.id);
+        if (!raw) continue;
+        // Their sim trails the tick by their own latency; carry d forward to tick time.
+        const lag = raw.stun > 0 ? 0 : Math.max(0, ticks[i].tick.t - raw.pt);
+        const tp = lag > 0 ? { ...raw, d: raw.d + raw.speed * lag } : raw;
         if (ticks[i].tick.t <= renderT) {
           a = tp;
           ta = ticks[i].tick.t;
