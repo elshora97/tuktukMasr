@@ -10,7 +10,7 @@ import { seeded } from "@/lib/prng";
 import { useRaceState } from "@/hooks/useRaceState";
 import { raceActions, raceNet, raceStore, serverNow } from "@/lib/race/raceClient";
 import type { TickPlayer } from "@/lib/race/protocol";
-import { RACE, generateRaceCoins, generateRaceTraffic, lowerBound, makeRacer, startX, stepRacer, type RaceCar, type RaceCoin } from "@/lib/race/shared";
+import { RACE, fireNitro, generateRaceCoins, generateRaceTraffic, lowerBound, makeRacer, startX, stepRacer, type RaceCar, type RaceCoin } from "@/lib/race/shared";
 import { setAnchorTarget, removeAnchor } from "@/lib/screenAnchors";
 import { fontStack } from "@/lib/textures";
 import TrafficCar, { HIDDEN_MATRIX, LIGHT_NORMAL, type TrafficTypeMeshes } from "../game/TrafficCar";
@@ -41,6 +41,8 @@ export const raceLocal = {
   t: 0,
   /** Race time the local prediction has reached. */
   simT: 0,
+  /** Set by the nitro button / key; consumed by the controller next frame. */
+  nitroPressed: false,
   remotes: new Map<string, RemoteRacer>(),
   lastTickAt: 0,
 };
@@ -88,6 +90,7 @@ export function RaceController() {
       L.sim.x = startX(me?.slot ?? 0);
       L.history = [];
       L.simT = 0;
+      L.nitroPressed = false;
       L.sendT = 0;
       L.lastHitT = -10;
       L.lastBeep = 99;
@@ -132,6 +135,14 @@ export function RaceController() {
 
     if (t >= 0 && room.phase !== "lobby") {
       // Local prediction with the same step the server runs.
+      if (L.nitroPressed) {
+        L.nitroPressed = false;
+        if (fireNitro(sim)) {
+          raceActions.sendEvent("nitro", L.simT);
+          audio.nitro();
+          runtime.shake = Math.max(runtime.shake, 0.18);
+        }
+      }
       // Fixed sub-steps up to the real race time (like the server), so slow
       // frames never make the prediction fall behind and skip coins on a snap.
       const coinsBefore = sim.coins;
@@ -140,11 +151,20 @@ export function RaceController() {
       while (L.simT < t) {
         const h = Math.min(1 / 60, t - L.simT);
         L.simT += h;
-        if (stepRacer(sim, runtime.playerX, h, L.simT, L.traffic, room.distance, L.coins)) hit = true;
-        if (sim.stun > 0 && hit) break;
+        const gotBefore = sim.coins;
+        if (stepRacer(sim, runtime.playerX, h, L.simT, L.traffic, room.distance, L.coins)) {
+          hit = true;
+          raceActions.sendEvent("hit", L.simT);
+        }
+        if (sim.coins > gotBefore) {
+          for (const i of sim.got) {
+            if (L.taken.has(i)) continue;
+            L.taken.add(i);
+            raceActions.sendEvent("coin", L.simT, i);
+          }
+        }
       }
       if (sim.coins > coinsBefore) {
-        for (const i of sim.got) L.taken.add(i);
         audio.coin(sim.coins);
       }
       if (hit) {
@@ -189,8 +209,11 @@ export function RaceController() {
           // We predicted a crash the server didn't confirm: drive on.
           sim.stun = 0;
         }
-        // Keep the coin count in line with the server (rare edge pickups).
-        if (mine.coins > sim.coins && mine.pt > L.lastHitT) sim.coins = mine.coins;
+        // Keep the coin count / tank in line with the server (rare edge pickups).
+        if (mine.coins > sim.coins && mine.pt > L.lastHitT) {
+          sim.tank = Math.min(RACE.nitroMaxS, sim.tank + (mine.coins - sim.coins) * RACE.coinNitroS);
+          sim.coins = mine.coins;
+        }
         if (mine.finished && !sim.finished) {
           sim.finished = true;
           sim.finishTime = mine.finishTime;

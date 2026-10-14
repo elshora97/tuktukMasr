@@ -3,11 +3,11 @@
 
 export const LANES = {
   count: 4,
-  width: 3.4,
+  width: 4.2,
 } as const;
 
 export const ROAD = {
-  width: LANES.count * LANES.width, // 13.6
+  width: LANES.count * LANES.width, // 16.8
   shoulder: 1.0,
   /** Height of the bridge deck above the city below. */
   deckHeight: 16,

@@ -28,6 +28,7 @@ function LiveRace() {
   const coins = useRef<HTMLSpanElement>(null);
   const nitro = useRef<HTMLDivElement>(null);
   const nitroBox = useRef<HTMLDivElement>(null);
+  const nitroBtn = useRef<HTMLButtonElement>(null);
   const markers = useRef<Map<string, HTMLSpanElement>>(new Map());
 
   useEffect(() => {
@@ -69,12 +70,31 @@ function LiveRace() {
         void coins.current.offsetWidth;
         coins.current.classList.add("score-bump");
       }
-      if (nitro.current) nitro.current.style.width = `${((sim.nitro / RACE.nitroMaxS) * 100).toFixed(1)}%`;
+      // Bar: the stored tank, or what's left of the burn while nitro is on.
+      const fill = sim.nitro > 0 ? sim.nitro : sim.tank;
+      if (nitro.current) nitro.current.style.width = `${((Math.min(fill, RACE.nitroMaxS) / RACE.nitroMaxS) * 100).toFixed(1)}%`;
       if (nitroBox.current) nitroBox.current.dataset.on = sim.nitro > 0 ? "1" : "0";
+      const btn = nitroBtn.current;
+      if (btn) {
+        const state = sim.nitro > 0 ? "burning" : sim.tank > 0 && sim.stun <= 0 && !sim.finished && t >= 0 ? "ready" : "empty";
+        if (btn.dataset.state !== state) btn.dataset.state = state;
+        btn.dataset.full = sim.tank >= RACE.nitroMaxS - 0.01 ? "1" : "0";
+      }
       if (done.current) done.current.style.display = raceLocal.sim.finished ? "flex" : "none";
     };
     raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.repeat || (e.target as HTMLElement | null)?.closest?.("input, textarea")) return;
+      if (e.code === "Space" || e.code === "ArrowUp" || e.code === "KeyW") {
+        e.preventDefault();
+        raceLocal.nitroPressed = true;
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("keydown", onKey);
+    };
   }, [room, myId]);
 
   return (
@@ -128,6 +148,24 @@ function LiveRace() {
           <div ref={nitro} className="absolute inset-y-0 right-0 bg-gradient-to-l from-saffron via-orange-500 to-red-500" style={{ width: "0%" }} />
         </div>
       </div>
+      {/* Nitro button (bottom-left, away from the steering thumb's usual spot) */}
+      <button
+        ref={nitroBtn}
+        type="button"
+        data-ui
+        data-state="empty"
+        aria-label="نيترو"
+        onPointerDown={(e) => {
+          e.preventDefault();
+          raceLocal.nitroPressed = true;
+        }}
+        className="nitro-btn pointer-events-auto fixed bottom-[max(18px,env(safe-area-inset-bottom))] left-4 grid size-20 touch-none select-none place-items-center rounded-full border-[3px] border-ink bg-cream text-ink shadow-[0_5px_0_#1a0d06] transition-transform active:translate-y-1 active:shadow-[0_2px_0_#1a0d06] data-[state=empty]:opacity-55 data-[state=ready]:bg-saffron data-[state=burning]:bg-[#ff5a00] data-[state=burning]:text-cream"
+      >
+        <span className="flex flex-col items-center leading-none">
+          <Flame className="size-8" strokeWidth={2.6} aria-hidden />
+          <span className="mt-0.5 text-[0.7rem] font-black">نيترو</span>
+        </span>
+      </button>
       <div
         ref={count}
         className="painted pointer-events-none fixed inset-0 hidden place-items-center text-[clamp(5rem,28vw,10rem)] leading-none text-saffron"

@@ -37,8 +37,12 @@ export const RACE = {
   nameMax: 16,
   /** Steering can't move faster than this (m/s) — server-side sanity clamp. */
   maxLateralSpeed: PLAYER.maxLateralSpeed * 1.35,
-  /** Coins: each one adds nitro seconds (capped); nitro multiplies the race speed. */
-  coinNitroS: 0.55,
+  /** Speed a racer restarts at after a spin-out — above traffic speed so the
+   * cars just overtaken can't rear-end them once the invulnerability ends. */
+  recoverSpeed: 17,
+  /** Coins fill the nitro tank (seconds, capped); the player fires it with the
+   * nitro button, burning the whole tank at nitroBoost × race speed. */
+  coinNitroS: 0.5,
   nitroMaxS: 3,
   nitroBoost: 1.4,
   /** Deceleration back to normal speed when nitro runs out (m/s²). */
@@ -188,8 +192,10 @@ export interface RacerSim {
   /** Race time (s) when the finish line was crossed. */
   finishTime: number | null;
   hits: number;
-  /** Seconds of nitro left. */
+  /** Seconds of nitro burning now. */
   nitro: number;
+  /** Seconds of nitro stored, waiting for the button. */
+  tank: number;
   coins: number;
   /** First coin not yet behind this racer, and collected indices at/after it. */
   coinIdx: number;
@@ -197,7 +203,7 @@ export interface RacerSim {
 }
 
 export function makeRacer(): RacerSim {
-  return { d: 0, x: laneCenter(1), speed: 0, stun: 0, ghost: 0, finished: false, finishTime: null, hits: 0, nitro: 0, coins: 0, coinIdx: 0, got: [] };
+  return { d: 0, x: laneCenter(1), speed: 0, stun: 0, ghost: 0, finished: false, finishTime: null, hits: 0, nitro: 0, tank: 0, coins: 0, coinIdx: 0, got: [] };
 }
 
 /** Player starting x for slot i (spread over lanes). */
@@ -211,7 +217,31 @@ const HIT_SHRINK_SERVER = 0.06;
  * Advance one racer by dt at race time t (seconds since the start).
  * Returns true when a crash happened during this step.
  */
-export function stepRacer(r: RacerSim, x: number, dt: number, t: number, traffic: RaceCar[], distance: number, coins: RaceCoin[] = []): boolean {
+export interface StepOptions {
+  /** Grows (+) or shrinks (−) the crash box in meters. */
+  hitMargin?: number;
+  /** Pick up coins automatically (client prediction). The server instead
+   * applies the client's reported pickups after validating them. */
+  autoCoins?: boolean;
+}
+
+/**
+ * Who decides what: the racer's own client detects its crashes and coin
+ * pickups with the exact steering it rendered, and reports them; the server
+ * validates each report against the course (with a small tolerance) and on
+ * its own only catches deep, unmistakable hits (hitMargin < 0), so a client
+ * can't skip crashes, and a near miss on screen is never a crash.
+ */
+export function stepRacer(
+  r: RacerSim,
+  x: number,
+  dt: number,
+  t: number,
+  traffic: RaceCar[],
+  distance: number,
+  coins: RaceCoin[] = [],
+  opts: StepOptions = {},
+): boolean {
   r.x = x;
   if (r.stun > 0) {
     r.nitro = 0;
@@ -220,6 +250,7 @@ export function stepRacer(r: RacerSim, x: number, dt: number, t: number, traffic
     if (r.stun <= 0) {
       r.stun = 0;
       r.ghost = RACE.ghostS;
+      r.speed = RACE.recoverSpeed;
     }
     return false;
   }
@@ -236,25 +267,48 @@ export function stepRacer(r: RacerSim, x: number, dt: number, t: number, traffic
     const frac = r.speed > 0 ? (distance - prev) / (r.speed * dt) : 1;
     r.finishTime = t - dt + dt * Math.min(1, Math.max(0, frac));
   }
-  if (!r.finished) collectCoins(r, coins);
+  if (!r.finished && opts.autoCoins !== false) collectCoins(r, coins);
   if (r.finished || r.ghost > 0) return false;
+  if (!touchingCar(r, t, traffic, opts.hitMargin ?? 0)) return false;
+  applyHit(r);
+  return true;
+}
 
-  // Collision: traffic center at s0 + V t. Search cars near the player.
+/** Is the racer's crash box (grown/shrunk by margin) overlapping a car at race time t? */
+export function touchingCar(r: RacerSim, t: number, traffic: RaceCar[], margin: number): boolean {
+  // Traffic center at s0 + V t. Search cars near the player.
   const shift = RACE.trafficSpeed * t;
-  const pHalfW = PLAYER.halfWidth - PLAYER.hitShrinkX - HIT_SHRINK_SERVER;
-  const pHalfL = PLAYER.halfLength - PLAYER.hitShrinkZ - HIT_SHRINK_SERVER;
-  for (let i = lowerBound(traffic, r.d - shift - 8); i < traffic.length; i++) {
+  const pHalfW = PLAYER.halfWidth - PLAYER.hitShrinkX - HIT_SHRINK_SERVER + margin;
+  const pHalfL = PLAYER.halfLength - PLAYER.hitShrinkZ - HIT_SHRINK_SERVER + margin;
+  for (let i = lowerBound(traffic, r.d - shift - 9); i < traffic.length; i++) {
     const c = traffic[i];
     const cs = c.s0 + shift;
-    if (cs > r.d + 8) break;
-    if (Math.abs(cs - r.d) < c.halfL * 0.94 + pHalfL && Math.abs(c.x - r.x) < c.halfW * 0.9 + pHalfW) {
-      r.stun = RACE.stunS;
-      r.speed = 0;
-      r.hits++;
-      return true;
-    }
+    if (cs > r.d + 9) break;
+    if (Math.abs(cs - r.d) < c.halfL * 0.94 + pHalfL && Math.abs(c.x - r.x) < c.halfW * 0.9 + pHalfW) return true;
   }
   return false;
+}
+
+/** Spin-out: stop, lose any burning nitro (the tank is kept). */
+export function applyHit(r: RacerSim) {
+  r.stun = RACE.stunS;
+  r.speed = 0;
+  r.nitro = 0;
+  r.hits++;
+}
+
+/** Server: accept a reported coin pickup if that coin is really next to the racer. */
+export function claimCoin(r: RacerSim, coins: RaceCoin[], i: number): boolean {
+  const c = coins[i];
+  if (!c || r.finished || r.got.includes(i) || i < r.coinIdx) return false;
+  if (Math.abs(c.s - r.d) > RACE.coinPickupS + 3 || Math.abs(c.x - r.x) > RACE.coinPickupX + 0.6) return false;
+  r.got.push(i);
+  r.coins++;
+  r.tank = Math.min(RACE.nitroMaxS, r.tank + RACE.coinNitroS);
+  // Coins far behind can't be claimed any more; keep the list short.
+  while (r.coinIdx < coins.length && coins[r.coinIdx].s < r.d - RACE.coinPickupS - 4) r.coinIdx++;
+  r.got = r.got.filter((k) => k >= r.coinIdx);
+  return true;
 }
 
 /** Picks up coins within reach; each one tops up nitro. */
@@ -266,8 +320,16 @@ function collectCoins(r: RacerSim, coins: RaceCoin[]) {
     if (Math.abs(coins[i].x - r.x) > RACE.coinPickupX || r.got.includes(i)) continue;
     r.got.push(i);
     r.coins++;
-    r.nitro = Math.min(RACE.nitroMaxS, r.nitro + RACE.coinNitroS);
+    r.tank = Math.min(RACE.nitroMaxS, r.tank + RACE.coinNitroS);
   }
+}
+
+/** Nitro button: burn the whole tank. Returns false when there's nothing to fire. */
+export function fireNitro(r: RacerSim): boolean {
+  if (r.tank <= 0 || r.stun > 0 || r.finished) return false;
+  r.nitro += r.tank;
+  r.tank = 0;
+  return true;
 }
 
 /**

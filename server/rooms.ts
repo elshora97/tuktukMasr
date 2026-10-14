@@ -4,7 +4,11 @@ import type { PlayerInfo, RaceResult, RaceTick, RoomPhase, RoomSnapshot } from "
 import {
   RACE,
   ROOM_ID_ALPHABET,
+  applyHit,
+  claimCoin,
+  fireNitro,
   generateRaceCoins,
+  touchingCar,
   generateRaceTraffic,
   type RaceCoin,
   makeRacer,
@@ -33,6 +37,8 @@ export interface ServerPlayer {
   inputs: { t: number; x: number }[];
   /** Race time this player's sim has reached (lags room.simT by their latency). */
   simT: number;
+  /** Client-reported events (crash, coin, nitro) applied when the sim reaches t. */
+  events: RaceEvent[];
   lastInputAt: number;
   /** Simple flood protection for inputs. */
   inputWindowStart: number;
@@ -109,6 +115,7 @@ export function addPlayer(room: Room, name: string, now: number): ServerPlayer {
     sim: makeRacer(),
     inputs: [],
     simT: 0,
+    events: [],
     lastInputAt: 0,
     inputWindowStart: now,
     inputCount: 0,
@@ -154,6 +161,7 @@ export function beginCountdown(room: Room, now: number) {
     p.sim.x = startX(p.slot);
     p.inputs = [];
     p.simT = 0;
+    p.events = [];
   }
 }
 
@@ -172,6 +180,19 @@ export function backToLobby(room: Room) {
 const SIM_STEP = 1 / 60;
 /** How far a player's sim may trail the room clock while waiting for their inputs. */
 const MAX_INPUT_LAG = 0.4;
+
+export type RaceEvent = { t: number; kind: "hit" } | { t: number; kind: "nitro" } | { t: number; kind: "coin"; i: number };
+
+/** Server sanity margins: auto-detect only deep hits; accept reported ones within a tolerance. */
+const SERVER_STEP = { hitMargin: -0.22, autoCoins: false };
+const REPORTED_HIT_TOLERANCE = 0.45;
+
+function applyEvent(room: Room, p: ServerPlayer, ev: RaceEvent) {
+  const r = p.sim;
+  if (ev.kind === "nitro") fireNitro(r);
+  else if (ev.kind === "coin") claimCoin(r, room.coins, ev.i);
+  else if (r.stun <= 0 && r.ghost <= 0 && !r.finished && touchingCar(r, p.simT, room.traffic, REPORTED_HIT_TOLERANCE)) applyHit(r);
+}
 
 /** Steering x the client had at race time t (interpolated between samples). */
 function inputAt(p: ServerPlayer, t: number): number | null {
@@ -201,13 +222,14 @@ export function simulate(room: Room, now: number): { ended: boolean } {
     const until = Math.min(target, Math.max(lastT, target - MAX_INPUT_LAG));
     while (p.simT + SIM_STEP <= until) {
       p.simT += SIM_STEP;
+      while (p.events.length && p.events[0].t <= p.simT) applyEvent(room, p, p.events.shift()!);
       const want = inputAt(p, p.simT) ?? p.sim.x;
       // Speed-limited (with slack for frame jitter) so clients can't teleport.
       const lim = maxLat * SIM_STEP * 1.6;
       const dx = Math.max(-lim, Math.min(lim, want - p.sim.x));
       const x = Math.max(-PLAYER.xLimit, Math.min(PLAYER.xLimit, p.sim.x + dx));
       const wasFinished = p.sim.finished;
-      stepRacer(p.sim, x, SIM_STEP, p.simT, room.traffic, room.distance, room.coins);
+      stepRacer(p.sim, x, SIM_STEP, p.simT, room.traffic, room.distance, room.coins, SERVER_STEP);
       if (!wasFinished && p.sim.finished && room.firstFinishAt === null) room.firstFinishAt = now;
     }
   }
@@ -253,6 +275,7 @@ export function tick(room: Room): RaceTick {
       stun: round2(p.sim.stun),
       ghost: round2(p.sim.ghost),
       nitro: round2(p.sim.nitro),
+      tank: round2(p.sim.tank),
       coins: p.sim.coins,
       finished: p.sim.finished,
       finishTime: p.sim.finishTime,

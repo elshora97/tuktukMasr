@@ -184,3 +184,15 @@ body {
     animation-duration: 0.01s;
   }
 }
+
+/* Race nitro button: pulses when the tank is full and ready to fire. */
+@keyframes nitro-pulse {
+  0%, 100% { box-shadow: 0 5px 0 #1a0d06, 0 0 0 0 rgb(255 138 28 / 0.7); }
+  50% { box-shadow: 0 5px 0 #1a0d06, 0 0 0 12px rgb(255 138 28 / 0); }
+}
+.nitro-btn[data-state="ready"][data-full="1"] {
+  animation: nitro-pulse 1s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .nitro-btn[data-state="ready"][data-full="1"] { animation: none; }
+}

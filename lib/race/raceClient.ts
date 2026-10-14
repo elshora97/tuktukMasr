@@ -351,7 +351,12 @@ export const raceActions = {
   },
 
   sendInput(x: number, t: number) {
-    if (raceNet.socket?.connected) raceNet.socket.volatile.emit("race:input", { x, t: Math.round(t * 1000) / 1000 });
+    if (raceNet.socket?.connected) raceNet.socket.emit("race:input", { x, t: Math.round(t * 1000) / 1000 });
+  },
+
+  /** Report a crash / coin pickup / nitro press at race time t (server validates). */
+  sendEvent(kind: "hit" | "nitro" | "coin", t: number, i?: number) {
+    if (raceNet.socket?.connected) raceNet.socket.emit("race:event", { kind, t: Math.round(t * 1000) / 1000, i });
   },
 
   /** Leave the race mode entirely (back to the main menu). */

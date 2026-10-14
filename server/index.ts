@@ -228,6 +228,24 @@ io.on("connection", (socket) => {
     player.lastInputAt = now;
   });
 
+  // Crash / coin / nitro reported by the racer's client at race time t; the
+  // sim applies (and validates) it when it reaches t, never earlier than now.
+  socket.on("race:event", (req) => {
+    const seat = seatOf(socket);
+    if (!seat || seat.room.phase !== "racing") return;
+    const { player, room } = seat;
+    const t = Number(req?.t);
+    if (!Number.isFinite(t) || player.events.length > 32) return;
+    const at = Math.min(room.simT + 1, Math.max(player.simT, t));
+    const kind = req?.kind;
+    const i = Number(req?.i);
+    if (kind === "coin" && Number.isInteger(i)) player.events.push({ t: at, kind, i });
+    else if (kind === "hit" || kind === "nitro") player.events.push({ t: at, kind });
+    else return;
+    // Keep time order (reports can interleave with the clamp above).
+    player.events.sort((a, b) => a.t - b.t);
+  });
+
   socket.on("disconnect", () => {
     const seat = seatOf(socket);
     seats.delete(socket.id);

@@ -54,6 +54,7 @@ export interface TickPlayer {
   stun: number;
   ghost: number;
   nitro: number;
+  tank: number;
   coins: number;
   finished: boolean;
   finishTime: number | null;
@@ -90,5 +91,6 @@ export interface ClientToServer {
   "room:close": () => void;
   "race:again": () => void;
   "race:input": (req: { x: number; t: number }) => void;
+  "race:event": (req: { t: number; kind: "hit" | "nitro" | "coin"; i?: number }) => void;
   "time:ping": (clientNow: number, ack: (serverNow: number) => void) => void;
 }
