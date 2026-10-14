@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
-import { CanvasTexture, Color, Group, Matrix4, Quaternion, RepeatWrapping, SRGBColorSpace, Vector3 } from "three";
+import { CanvasTexture, Color, CylinderGeometry, Euler, Group, InstancedMesh, Matrix4, MeshStandardMaterial, Quaternion, RepeatWrapping, SRGBColorSpace, Vector3 } from "three";
 import { LAYOUT, PLAYER, VEHICLES, VEHICLE_TYPES, type VehicleType } from "@/lib/gameConfig";
 import { gameStore, makePose, runtime, type TukTukPose } from "@/lib/gameStore";
 import { audio } from "@/lib/audio";
@@ -10,7 +10,7 @@ import { seeded } from "@/lib/prng";
 import { useRaceState } from "@/hooks/useRaceState";
 import { raceActions, raceNet, raceStore, serverNow } from "@/lib/race/raceClient";
 import type { TickPlayer } from "@/lib/race/protocol";
-import { RACE, generateRaceTraffic, lowerBound, makeRacer, startX, stepRacer, type RaceCar } from "@/lib/race/shared";
+import { RACE, generateRaceCoins, generateRaceTraffic, lowerBound, makeRacer, startX, stepRacer, type RaceCar, type RaceCoin } from "@/lib/race/shared";
 import { setAnchorTarget, removeAnchor } from "@/lib/screenAnchors";
 import { fontStack } from "@/lib/textures";
 import TrafficCar, { HIDDEN_MATRIX, LIGHT_NORMAL, type TrafficTypeMeshes } from "../game/TrafficCar";
@@ -35,7 +35,12 @@ export const raceLocal = {
   lastHitT: -10,
   lastBeep: 99,
   traffic: [] as RaceCar[],
+  coins: [] as RaceCoin[],
+  /** Coin indices this client collected (hidden from the road). */
+  taken: new Set<number>(),
   t: 0,
+  /** Race time the local prediction has reached. */
+  simT: 0,
   remotes: new Map<string, RemoteRacer>(),
   lastTickAt: 0,
 };
@@ -82,10 +87,14 @@ export function RaceController() {
       L.sim = makeRacer();
       L.sim.x = startX(me?.slot ?? 0);
       L.history = [];
+      L.simT = 0;
       L.sendT = 0;
       L.lastHitT = -10;
       L.lastBeep = 99;
       L.traffic = generateRaceTraffic(room.seed, room.distance);
+      L.coins = generateRaceCoins(room.seed, room.distance);
+      L.taken = new Set();
+      runtime.boost = 0;
       // Keep each remote's pose object (rendered tuk-tuks hold a reference); reset in place.
       for (const r of L.remotes.values()) {
         Object.assign(r.pose, makePose());
@@ -123,7 +132,21 @@ export function RaceController() {
 
     if (t >= 0 && room.phase !== "lobby") {
       // Local prediction with the same step the server runs.
-      const hit = stepRacer(sim, runtime.playerX, dt, t, L.traffic, room.distance);
+      // Fixed sub-steps up to the real race time (like the server), so slow
+      // frames never make the prediction fall behind and skip coins on a snap.
+      const coinsBefore = sim.coins;
+      let hit = false;
+      if (t - L.simT > 0.5) L.simT = t - 0.5;
+      while (L.simT < t) {
+        const h = Math.min(1 / 60, t - L.simT);
+        L.simT += h;
+        if (stepRacer(sim, runtime.playerX, h, L.simT, L.traffic, room.distance, L.coins)) hit = true;
+        if (sim.stun > 0 && hit) break;
+      }
+      if (sim.coins > coinsBefore) {
+        for (const i of sim.got) L.taken.add(i);
+        audio.coin(sim.coins);
+      }
       if (hit) {
         L.lastHitT = t;
         runtime.pose.spinT = 0;
@@ -166,6 +189,8 @@ export function RaceController() {
           // We predicted a crash the server didn't confirm: drive on.
           sim.stun = 0;
         }
+        // Keep the coin count in line with the server (rare edge pickups).
+        if (mine.coins > sim.coins && mine.pt > L.lastHitT) sim.coins = mine.coins;
         if (mine.finished && !sim.finished) {
           sim.finished = true;
           sim.finishTime = mine.finishTime;
@@ -201,6 +226,7 @@ export function RaceController() {
       let x: number;
       let stun = 0;
       let ghost = 0;
+      const nitro = (a ?? b)?.nitro ?? 0;
       if (a && b) {
         const k = (renderT - ta) / Math.max(1e-6, tb - ta);
         d = a.d + (b.d - a.d) * k;
@@ -223,6 +249,7 @@ export function RaceController() {
       r.pose.z = -(d - sim.d);
       r.pose.speed = stun > 0 ? 0 : t < 0 ? 0 : (a ?? b)?.speed ?? 0;
       r.pose.ghost = ghost > 0 ? 1 : 0;
+      r.pose.boost = nitro > 0 ? 1 : r.pose.boost * Math.exp(-dt * 4);
       if (stun > 0 && !r.stunPrev) r.pose.spinT = 0;
       r.stunPrev = stun > 0;
       if (r.pose.spinT >= 0) r.pose.spinT = r.pose.spinT > 1 ? -1 : r.pose.spinT + dt;
@@ -237,6 +264,8 @@ export function RaceController() {
     pose.crashT = -1;
     pose.passenger = -1;
     pose.ghost = sim.ghost > 0 ? 1 : 0;
+    runtime.boost = sim.nitro > 0 ? 1 : runtime.boost * Math.exp(-dt * 4);
+    pose.boost = runtime.boost;
     if (pose.spinT >= 0) pose.spinT = pose.spinT > 1 ? -1 : pose.spinT + dt;
     runtime.distance = sim.d;
     runtime.speed = sim.speed;
@@ -325,6 +354,54 @@ export function RaceTraffic({ shadows }: { shadows: boolean }) {
       ))}
     </group>
   );
+}
+
+// ---------------------------------------------------------------------------
+// Nitro coins (static on the road; hidden once this client collects them).
+
+const MAX_COINS = 48;
+const coinEuler = new Euler();
+
+export function RaceCoins() {
+  const ref = useRef<InstancedMesh>(null);
+  const geo = useMemo(() => {
+    const g = new CylinderGeometry(0.42, 0.42, 0.09, 20);
+    g.rotateX(Math.PI / 2); // face the camera
+    return g;
+  }, []);
+  const mat = useMemo(
+    () => new MeshStandardMaterial({ color: "#f6c21c", emissive: "#b8860b", emissiveIntensity: 0.55, metalness: 0.6, roughness: 0.3 }),
+    [],
+  );
+  useEffect(
+    () => () => {
+      geo.dispose();
+      mat.dispose();
+    },
+    [geo, mat],
+  );
+  const spin = useRef(0);
+  useFrame((_, dt) => {
+    const m = ref.current;
+    if (!m) return;
+    const L = raceLocal;
+    const d = L.sim.d;
+    spin.current += Math.min(dt, 0.05) * 3.2;
+    let n = 0;
+    for (let i = L.sim.coinIdx; i < L.coins.length && n < MAX_COINS; i++) {
+      const c = L.coins[i];
+      if (c.s > d + 190) break;
+      if (L.taken.has(i)) continue;
+      tmpP.set(c.x, 0.78 + Math.sin(spin.current * 1.3 + i) * 0.08, -(c.s - d));
+      tmpQ.setFromEuler(coinEuler.set(0, spin.current + i * 0.4, 0));
+      tmpM.compose(tmpP, tmpQ, tmpS);
+      m.setMatrixAt(n++, tmpM);
+    }
+    tmpQ.identity();
+    for (let k = n; k < MAX_COINS; k++) m.setMatrixAt(k, HIDDEN_MATRIX);
+    m.instanceMatrix.needsUpdate = true;
+  });
+  return <instancedMesh ref={ref} args={[geo, mat, MAX_COINS]} frustumCulled={false} />;
 }
 
 // ---------------------------------------------------------------------------

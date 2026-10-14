@@ -23,6 +23,7 @@ export interface RaceResult {
   /** Meters covered (for DNF ordering). */
   distance: number;
   hits: number;
+  coins: number;
   left: boolean;
 }
 
@@ -52,6 +53,8 @@ export interface TickPlayer {
   speed: number;
   stun: number;
   ghost: number;
+  nitro: number;
+  coins: number;
   finished: boolean;
   finishTime: number | null;
 }

@@ -16,7 +16,7 @@ import MissionController from "../mission/MissionController";
 import MissionWorld from "../mission/MissionWorld";
 import MissionTraffic from "../mission/MissionTraffic";
 import MissionPassenger from "../mission/MissionPassenger";
-import { RaceController, RaceLines, RaceTraffic, RemoteRacers, raceLocal } from "../race/RaceScene";
+import { RaceCoins, RaceController, RaceLines, RaceTraffic, RemoteRacers, raceLocal } from "../race/RaceScene";
 import TukTuk from "./TukTuk";
 import TrafficManager, { OncomingTraffic } from "./TrafficManager";
 import BridgeEnvironment from "./BridgeEnvironment";
@@ -214,6 +214,7 @@ export default function GameCanvas() {
           <OncomingTraffic />
           {racing && <RemoteRacers />}
           {racing && <RaceLines />}
+          {racing && <RaceCoins />}
         </>
       )}
       <TukTuk shadows={high} pose={runtime.pose} />

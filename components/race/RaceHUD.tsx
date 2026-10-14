@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { Crown, Flag, Home, Loader2, LogOut, RotateCcw, Timer, Volume2, VolumeX } from "lucide-react";
+import { Coins, Crown, Flag, Flame, Home, Loader2, LogOut, RotateCcw, Timer, Volume2, VolumeX } from "lucide-react";
 import { gameActions, useGameState } from "@/hooks/useGameState";
 import { useRaceState } from "@/hooks/useRaceState";
 import { audio } from "@/lib/audio";
 import { raceActions } from "@/lib/race/raceClient";
+import { RACE } from "@/lib/race/shared";
 import { bindAnchorElement } from "@/lib/screenAnchors";
 import { TUKTUK_PAINTS } from "../game/TukTuk";
 import { raceLocal } from "./RaceScene";
@@ -24,6 +25,9 @@ function LiveRace() {
   const time = useRef<HTMLSpanElement>(null);
   const count = useRef<HTMLDivElement>(null);
   const done = useRef<HTMLDivElement>(null);
+  const coins = useRef<HTMLSpanElement>(null);
+  const nitro = useRef<HTMLDivElement>(null);
+  const nitroBox = useRef<HTMLDivElement>(null);
   const markers = useRef<Map<string, HTMLSpanElement>>(new Map());
 
   useEffect(() => {
@@ -58,6 +62,15 @@ function LiveRace() {
         void count.current.offsetWidth;
         count.current.classList.add("score-bump");
       }
+      const sim = raceLocal.sim;
+      if (coins.current && coins.current.textContent !== String(sim.coins)) {
+        coins.current.textContent = String(sim.coins);
+        coins.current.classList.remove("score-bump");
+        void coins.current.offsetWidth;
+        coins.current.classList.add("score-bump");
+      }
+      if (nitro.current) nitro.current.style.width = `${((sim.nitro / RACE.nitroMaxS) * 100).toFixed(1)}%`;
+      if (nitroBox.current) nitroBox.current.dataset.on = sim.nitro > 0 ? "1" : "0";
       if (done.current) done.current.style.display = raceLocal.sim.finished ? "flex" : "none";
     };
     raf = requestAnimationFrame(tick);
@@ -79,6 +92,12 @@ function LiveRace() {
             0:00.0
           </span>
         </div>
+        <div className="flex items-center gap-1 rounded-xl border-2 border-ink bg-saffron px-2 py-1 text-sm font-black tabular-nums" aria-label="الفلوس">
+          <Coins className="size-4" strokeWidth={2.8} aria-hidden />
+          <span ref={coins} className="inline-block" dir="ltr">
+            0
+          </span>
+        </div>
       </div>
       {/* Progress track: start on the right, finish flag on the left (RTL) */}
       <div className="relative mt-2 h-3 rounded-full border-2 border-ink bg-white/80">
@@ -95,6 +114,19 @@ function LiveRace() {
             title={p.name}
           />
         ))}
+      </div>
+      {/* Nitro: filled by coins */}
+      <div
+        ref={nitroBox}
+        data-on="0"
+        className="mt-1.5 flex items-center gap-1.5 rounded-full border-2 border-ink bg-cream px-2 py-0.5 text-xs font-black data-[on=1]:bg-ink data-[on=1]:text-saffron"
+        aria-label="نيترو"
+      >
+        <Flame className="size-3.5 shrink-0" strokeWidth={2.8} aria-hidden />
+        <span>نيترو</span>
+        <div className="relative h-2 flex-1 overflow-hidden rounded-full border-[1.5px] border-current bg-white/60">
+          <div ref={nitro} className="absolute inset-y-0 right-0 bg-gradient-to-l from-saffron via-orange-500 to-red-500" style={{ width: "0%" }} />
+        </div>
       </div>
       <div
         ref={count}
@@ -175,7 +207,7 @@ function Results() {
           </ol>
           {mine && (
             <p className="mt-2 text-center text-xs font-bold text-ink/70">
-              خبطت {mine.hits} {mine.hits === 1 ? "مرة" : "مرات"} في السكة
+              خبطت {mine.hits} {mine.hits === 1 ? "مرة" : "مرات"} في السكة · لمّيت {mine.coins ?? 0} 🪙
             </p>
           )}
           {isHost ? (

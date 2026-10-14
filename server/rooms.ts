@@ -4,7 +4,9 @@ import type { PlayerInfo, RaceResult, RaceTick, RoomPhase, RoomSnapshot } from "
 import {
   RACE,
   ROOM_ID_ALPHABET,
+  generateRaceCoins,
   generateRaceTraffic,
+  type RaceCoin,
   makeRacer,
   startX,
   stepRacer,
@@ -45,6 +47,7 @@ export interface Room {
   seed: number;
   distance: number;
   traffic: RaceCar[];
+  coins: RaceCoin[];
   startAt: number | null;
   results: RaceResult[] | null;
   raceId: number;
@@ -73,6 +76,7 @@ export function createRoom(id: string, now: number, distance: number): Room {
     seed,
     distance,
     traffic: generateRaceTraffic(seed, distance),
+    coins: generateRaceCoins(seed, distance),
     startAt: null,
     results: null,
     raceId: 0,
@@ -159,6 +163,7 @@ export function backToLobby(room: Room) {
   room.results = null;
   room.seed = randomInt(1, 2 ** 31 - 1);
   room.traffic = generateRaceTraffic(room.seed, room.distance);
+  room.coins = generateRaceCoins(room.seed, room.distance);
   // Drop players who left mid-race; everyone re-readies.
   for (const [id, p] of room.players) if (p.left) room.players.delete(id);
   for (const p of room.players.values()) p.ready = false;
@@ -202,7 +207,7 @@ export function simulate(room: Room, now: number): { ended: boolean } {
       const dx = Math.max(-lim, Math.min(lim, want - p.sim.x));
       const x = Math.max(-PLAYER.xLimit, Math.min(PLAYER.xLimit, p.sim.x + dx));
       const wasFinished = p.sim.finished;
-      stepRacer(p.sim, x, SIM_STEP, p.simT, room.traffic, room.distance);
+      stepRacer(p.sim, x, SIM_STEP, p.simT, room.traffic, room.distance, room.coins);
       if (!wasFinished && p.sim.finished && room.firstFinishAt === null) room.firstFinishAt = now;
     }
   }
@@ -229,6 +234,7 @@ export function finishRace(room: Room) {
     time: p.sim.finishTime === null ? null : Math.round(p.sim.finishTime * 100) / 100,
     distance: Math.round(Math.min(p.sim.d, room.distance)),
     hits: p.sim.hits,
+    coins: p.sim.coins,
     left: p.left,
   }));
   room.phase = "results";
@@ -246,6 +252,8 @@ export function tick(room: Room): RaceTick {
       speed: round2(p.sim.speed),
       stun: round2(p.sim.stun),
       ghost: round2(p.sim.ghost),
+      nitro: round2(p.sim.nitro),
+      coins: p.sim.coins,
       finished: p.sim.finished,
       finishTime: p.sim.finishTime,
     })),

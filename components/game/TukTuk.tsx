@@ -2,8 +2,7 @@
 
 import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
-import {
-  CylinderGeometry,
+import { AdditiveBlending, CylinderGeometry,
   DoubleSide,
   Group,
   Mesh,
@@ -329,6 +328,7 @@ interface TukTukProps {
 export default function TukTuk({ shadows, pose, paint = 0, detailed = true }: TukTukProps) {
   const root = useRef<Group>(null);
   const body = useRef<Group>(null);
+  const flame = useRef<Group>(null);
   const fork = useRef<Group>(null);
   const handle = useRef<Group>(null);
   const frontWheel = useRef<Mesh>(null);
@@ -429,6 +429,15 @@ export default function TukTuk({ shadows, pose, paint = 0, detailed = true }: Tu
       return;
     }
     r.position.set(pose.x, 0, pose.z);
+    // Nitro: flickering exhaust flame.
+    if (flame.current) {
+      const on = pose.boost > 0.05;
+      flame.current.visible = on;
+      if (on) {
+        const f = pose.boost * (0.75 + Math.sin(m.t * 47) * 0.15 + Math.sin(m.t * 31) * 0.1);
+        flame.current.scale.set(0.8 + f * 0.3, 0.8 + f * 0.3, f);
+      }
+    }
 
     const lean = Math.max(-1, Math.min(1, m.vel / PLAYER.maxLateralSpeed));
     m.roll += (-lean * 0.16 - m.roll) * Math.min(1, dt * 8);
@@ -467,6 +476,16 @@ export default function TukTuk({ shadows, pose, paint = 0, detailed = true }: Tu
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.025, 0.1]} material={mats.blob} renderOrder={1}>
         <planeGeometry args={[2.0, 3.4]} />
       </mesh>
+      <group ref={flame} position={[-0.42, 0.32, 1.62]} visible={false}>
+        <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, 0, 0.55]}>
+          <coneGeometry args={[0.2, 1.1, 10, 1, true]} />
+          <meshBasicMaterial color="#ff5a00" transparent opacity={0.85} depthWrite={false} blending={AdditiveBlending} />
+        </mesh>
+        <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, 0, 0.28]}>
+          <coneGeometry args={[0.08, 0.55, 8, 1, true]} />
+          <meshBasicMaterial color="#ffd23f" transparent opacity={0.9} depthWrite={false} blending={AdditiveBlending} />
+        </mesh>
+      </group>
       <group ref={body}>
         <mesh geometry={geo.body} material={mats.body} castShadow={shadows} />
         <mesh geometry={geo.lights} material={mats.lights} />

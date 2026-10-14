@@ -37,6 +37,14 @@ export const RACE = {
   nameMax: 16,
   /** Steering can't move faster than this (m/s) — server-side sanity clamp. */
   maxLateralSpeed: PLAYER.maxLateralSpeed * 1.35,
+  /** Coins: each one adds nitro seconds (capped); nitro multiplies the race speed. */
+  coinNitroS: 0.55,
+  nitroMaxS: 3,
+  nitroBoost: 1.4,
+  /** Deceleration back to normal speed when nitro runs out (m/s²). */
+  nitroFade: 14,
+  coinPickupS: 1.3,
+  coinPickupX: 1.05,
 } as const;
 
 export const ROOM_ID_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
@@ -122,6 +130,37 @@ export function generateRaceTraffic(seed: number, distance: number): RaceCar[] {
   return cars;
 }
 
+// ---------------------------------------------------------------------------
+// Deterministic coins (static on the road)
+
+export interface RaceCoin {
+  /** Position along the course. */
+  s: number;
+  x: number;
+}
+
+/**
+ * Lines of 4–6 coins in one lane every ~70–110 m. Returned sorted by s. A
+ * separate seed stream keeps traffic unchanged.
+ */
+export function generateRaceCoins(seed: number, distance: number): RaceCoin[] {
+  const rnd = seeded(seed ^ 0x5f3759df);
+  const coins: RaceCoin[] = [];
+  let s = 60;
+  while (s < distance - 30) {
+    const lane = Math.floor(rnd() * LANES.count);
+    const n = 4 + Math.floor(rnd() * 3);
+    // Some lines drift into the next lane to make the player steer for them.
+    const drift = rnd() < 0.35 ? (lane < LANES.count - 1 ? 1 : -1) : 0;
+    for (let i = 0; i < n; i++) {
+      const x = laneCenter(lane) + drift * LANES.width * (i / (n - 1));
+      coins.push({ s: s + i * 4.5, x });
+    }
+    s += 70 + rnd() * 40;
+  }
+  return coins;
+}
+
 /** Index of the first car with s0 >= value (binary search). */
 export function lowerBound(cars: RaceCar[], value: number) {
   let lo = 0;
@@ -149,10 +188,16 @@ export interface RacerSim {
   /** Race time (s) when the finish line was crossed. */
   finishTime: number | null;
   hits: number;
+  /** Seconds of nitro left. */
+  nitro: number;
+  coins: number;
+  /** First coin not yet behind this racer, and collected indices at/after it. */
+  coinIdx: number;
+  got: number[];
 }
 
 export function makeRacer(): RacerSim {
-  return { d: 0, x: laneCenter(1), speed: 0, stun: 0, ghost: 0, finished: false, finishTime: null, hits: 0 };
+  return { d: 0, x: laneCenter(1), speed: 0, stun: 0, ghost: 0, finished: false, finishTime: null, hits: 0, nitro: 0, coins: 0, coinIdx: 0, got: [] };
 }
 
 /** Player starting x for slot i (spread over lanes). */
@@ -166,9 +211,10 @@ const HIT_SHRINK_SERVER = 0.06;
  * Advance one racer by dt at race time t (seconds since the start).
  * Returns true when a crash happened during this step.
  */
-export function stepRacer(r: RacerSim, x: number, dt: number, t: number, traffic: RaceCar[], distance: number): boolean {
+export function stepRacer(r: RacerSim, x: number, dt: number, t: number, traffic: RaceCar[], distance: number, coins: RaceCoin[] = []): boolean {
   r.x = x;
   if (r.stun > 0) {
+    r.nitro = 0;
     r.stun -= dt;
     r.speed = 0;
     if (r.stun <= 0) {
@@ -178,8 +224,11 @@ export function stepRacer(r: RacerSim, x: number, dt: number, t: number, traffic
     return false;
   }
   if (r.ghost > 0) r.ghost = Math.max(0, r.ghost - dt);
-  const target = r.finished ? RACE.startSpeed : raceSpeedFor(r.d, distance);
-  r.speed = r.speed < target ? Math.min(target, r.speed + RACE.recoverAccel * dt) : target;
+  if (r.nitro > 0) r.nitro = Math.max(0, r.nitro - dt);
+  const base = r.finished ? RACE.startSpeed : raceSpeedFor(r.d, distance);
+  const target = r.nitro > 0 ? base * RACE.nitroBoost : base;
+  const accel = r.nitro > 0 ? RACE.recoverAccel * 2.5 : RACE.recoverAccel;
+  r.speed = r.speed < target ? Math.min(target, r.speed + accel * dt) : Math.max(target, r.speed - RACE.nitroFade * dt);
   const prev = r.d;
   r.d += r.speed * dt;
   if (!r.finished && r.d >= distance) {
@@ -187,6 +236,7 @@ export function stepRacer(r: RacerSim, x: number, dt: number, t: number, traffic
     const frac = r.speed > 0 ? (distance - prev) / (r.speed * dt) : 1;
     r.finishTime = t - dt + dt * Math.min(1, Math.max(0, frac));
   }
+  if (!r.finished) collectCoins(r, coins);
   if (r.finished || r.ghost > 0) return false;
 
   // Collision: traffic center at s0 + V t. Search cars near the player.
@@ -205,6 +255,19 @@ export function stepRacer(r: RacerSim, x: number, dt: number, t: number, traffic
     }
   }
   return false;
+}
+
+/** Picks up coins within reach; each one tops up nitro. */
+function collectCoins(r: RacerSim, coins: RaceCoin[]) {
+  const reach = RACE.coinPickupS;
+  while (r.coinIdx < coins.length && coins[r.coinIdx].s < r.d - reach) r.coinIdx++;
+  if (r.got.length && r.got[0] < r.coinIdx) r.got = r.got.filter((i) => i >= r.coinIdx);
+  for (let i = r.coinIdx; i < coins.length && coins[i].s <= r.d + reach; i++) {
+    if (Math.abs(coins[i].x - r.x) > RACE.coinPickupX || r.got.includes(i)) continue;
+    r.got.push(i);
+    r.coins++;
+    r.nitro = Math.min(RACE.nitroMaxS, r.nitro + RACE.coinNitroS);
+  }
 }
 
 /**

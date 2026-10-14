@@ -301,6 +301,27 @@ class AudioEngine {
     }
   }
 
+  /** Coin pickup: bright two-note chime, a little higher every few coins. */
+  coin(count = 0) {
+    const ctx = this.ctx;
+    if (!ctx || !this.master || ctx.state !== "running") return;
+    const lift = Math.pow(2, (count % 5) / 12);
+    let t = ctx.currentTime + 0.005;
+    for (const f of [988 * lift, 1319 * lift]) {
+      const o = ctx.createOscillator();
+      o.type = "triangle";
+      o.frequency.value = f;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0, t);
+      g.gain.linearRampToValueAtTime(0.09, t + 0.008);
+      g.gain.exponentialRampToValueAtTime(0.0008, t + 0.16);
+      o.connect(g).connect(this.master);
+      o.start(t);
+      o.stop(t + 0.18);
+      t += 0.06;
+    }
+  }
+
   /** Short beep (race countdown): low beeps then a high "go". */
   beep(high = false) {
     const ctx = this.ctx;
