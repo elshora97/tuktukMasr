@@ -196,3 +196,12 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .nitro-btn[data-state="ready"][data-full="1"] { animation: none; }
 }
+
+/* Taxi shift: brief fade while the next fare's streets swap in. */
+@keyframes fare-fade {
+  from { opacity: 0.85; }
+  to { opacity: 0; visibility: hidden; }
+}
+.fare-fade {
+  animation: fare-fade 0.7s ease-out forwards;
+}

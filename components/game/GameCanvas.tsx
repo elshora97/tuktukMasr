@@ -167,7 +167,6 @@ export default function GameCanvas() {
   const mode = useGameState((s) => s.mode);
   const status = useGameState((s) => s.status);
   const tripId = useMissionState((s) => s.tripId);
-  const destination = useMissionState((s) => s.destination);
   const high = quality === "high";
   const [dpr, setDpr] = useState(high ? 1.5 : 1);
   // The city street exists once a trip has been generated.
@@ -203,7 +202,7 @@ export default function GameCanvas() {
       <CameraRig />
       {route ? (
         <>
-          <MissionWorld key={tripId} route={route} destination={destination} />
+          <MissionWorld key={tripId} route={route} />
           <MissionTraffic shadows={high} />
           <MissionPassenger />
         </>

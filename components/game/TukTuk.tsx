@@ -411,7 +411,11 @@ export default function TukTuk({ shadows, pose, paint = 0, detailed = true }: Tu
     if (rearR.current) rearR.current.rotation.x = m.wheelRot;
     if (frontWheel.current) frontWheel.current.rotation.x = (m.wheelRot * REAR_WHEEL_R) / FRONT_WHEEL_R;
     seated.current.forEach((mesh, i) => {
-      if (mesh) mesh.visible = pose.passenger === i;
+      if (!mesh) return;
+      // Two riders share the bench: slide them apart.
+      const two = pose.passenger >= 0 && pose.passenger2 >= 0;
+      mesh.visible = pose.passenger === i || pose.passenger2 === i;
+      mesh.position.x = two ? (pose.passenger === i ? -0.28 : 0.28) : 0;
     });
     // Invulnerability flicker after a race spin-out.
     r.visible = pose.ghost <= 0 || Math.floor(m.t * 14) % 2 === 0;

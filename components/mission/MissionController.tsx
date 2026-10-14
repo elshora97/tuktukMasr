@@ -11,7 +11,7 @@ import { routeToWorld, type RoutePoint } from "@/lib/mission/route";
 const pt: RoutePoint = { x: 0, z: 0, h: 0 };
 
 /** Phases where the tuk-tuk is held still and steering is locked. */
-const LOCKED = new Set(["boarding", "droppingOff", "completed", "failed"]);
+const LOCKED = new Set(["boarding", "droppingOff", "shiftOver"]);
 
 /**
  * Drives the passenger mission: movement along the route (auto-cruise with a
@@ -40,9 +40,19 @@ export default function MissionController() {
     const phase = ms.phase;
     mission.phaseT += dt;
 
-    // Crash: tip-over animation, then the failure screen (set by MissionTraffic).
+    // Crash: tip-over animation, then back on the wheels for the next fare
+    // (or the end of the shift when no lives are left).
     if (runtime.crashT >= 0) {
       runtime.crashT += dt;
+      if (runtime.crashT > MISSION.crashRecoverS && phase === "failed") {
+        runtime.crashT = -1;
+        pose.crashT = -1;
+        runtime.shake = 0;
+        mission.speed = 0;
+        if (ms.lives > 0) missionActions.nextFare();
+        else missionActions.endShift();
+        return;
+      }
       pose.crashT = runtime.crashT;
       mission.speed *= Math.exp(-dt * 6);
       pose.speed = mission.speed;
@@ -134,6 +144,18 @@ export default function MissionController() {
           audio.fanfare();
         }
         break;
+      // Endless shift: after a short beat the next fare is waiting nearby.
+      case "completed":
+        mission.inZone = false;
+        if (mission.phaseT >= MISSION.nextFareS) missionActions.nextFare();
+        break;
+      case "failed":
+        mission.inZone = false;
+        if (mission.phaseT >= MISSION.nextFareS) {
+          if (ms.lives > 0) missionActions.nextFare();
+          else missionActions.endShift();
+        }
+        break;
       default:
         break;
     }
@@ -156,7 +178,9 @@ export default function MissionController() {
       p === "navigating" ||
       p === "arriving" ||
       (p === "droppingOff" && mission.phaseT < 0.25);
-    pose.passenger = seated ? missionStore.getState().passenger : -1;
+    const cur = missionStore.getState();
+    pose.passenger = seated ? cur.passenger : -1;
+    pose.passenger2 = seated ? cur.passenger2 : -1;
     runtime.speed = mission.speed;
     runtime.playerX = mission.d;
     audio.update(Math.max(mission.speed, 9), missionActive(p) ? "playing" : "menu", dt);

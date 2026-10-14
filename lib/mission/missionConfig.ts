@@ -1,4 +1,5 @@
 /** Tunables and content for the passenger-pickup mode ("وصلني يا معلم"). */
+import { NODE_BY_ID, type LandmarkKind } from "./cairoMap";
 
 export const STREET = {
   lanes: 3,
@@ -43,16 +44,15 @@ export const MISSION = {
   dropHalf: 12,
   arrivingS: 1.6,
 
-  /** Route shape. */
-  firstStraight: 340,
-  turnRadius: 36,
-  segmentMin: 170,
-  segmentMax: 270,
-  turnsMin: 3,
-  turnsMax: 4,
-  finalStraight: 230,
-  /** Destination point this far before the route end. */
-  dropFromEnd: 90,
+  /** Street corners are rounded with at most this radius. */
+  turnRadius: 26,
+
+  /** Endless shift: lives, chance of a two-passenger fare, pause between fares. */
+  lives: 3,
+  groupChance: 0.35,
+  groupScoreMul: 1.6,
+  nextFareS: 2.8,
+  crashRecoverS: 2.6,
 
   /** Traffic. */
   trafficMax: 9,
@@ -79,19 +79,31 @@ export interface Destination {
   line: string;
   /** Big sign at the destination. */
   sign: string;
-  kind: "station" | "square" | "avenue" | "metro" | "market";
+  kind: LandmarkKind;
 }
 
-export const DESTINATIONS: Destination[] = [
-  { id: "ramses", name: "رمسيس", line: "لو سمحت يا معلم، وصلني رمسيس.", sign: "محطة رمسيس", kind: "station" },
-  { id: "midan", name: "الميدان", line: "ممكن تروح بيا عند الميدان؟", sign: "الميدان", kind: "square" },
-  { id: "main", name: "الشارع الرئيسي", line: "على أقرب شارع رئيسي يا أسطى.", sign: "الشارع الرئيسي", kind: "avenue" },
-  { id: "metro", name: "محطة المترو", line: "وصلني المترو بسرعة الله يخليك، متأخر على الشغل!", sign: "محطة المترو", kind: "metro" },
-  { id: "souq", name: "السوق", line: "على السوق يا ابني، ورايا طلبات كتير.", sign: "سوق الخضار", kind: "market" },
+const LINES_ONE = [
+  "لو سمحت يا معلم، وصلني {p}.",
+  "على {p} بسرعة الله يخليك، متأخر!",
+  "ممكن توديني {p} يا أسطى؟",
+  "عايز أروح {p}.. وما تزوّدش في الأجرة 😅",
+  "{p} يا ريس، وعلى مهلك في المطبات.",
 ];
+const LINES_TWO = [
+  "إحنا الاتنين رايحين {p} يا معلم.",
+  "وصلنا {p} الله يكرمك، مستعجلين!",
+  "على {p} يا أسطى.. وشغّل لنا حاجة حلوة 🎶",
+];
+
+export function destinationFor(id: string, group: number, pick: number): Destination {
+  const n = NODE_BY_ID.get(id)!;
+  const lines = group > 1 ? LINES_TWO : LINES_ONE;
+  return { id, name: n.name, sign: n.name, kind: n.kind, line: lines[pick % lines.length].replace("{p}", n.name) };
+}
 
 export const MISSION_TEXT = {
   intro: "في زبون مستنيك! قرّب منه ووقف عشان يركب",
+  introGroup: "في زبونين مستنيينك! قرّب ووقف عشان يركبوا",
   pickupPrompt: "اقف هنا عشان الزبون يركب",
   holdPrompt: "خليك واقف.. بيركب",
   dropPrompt: "اقف في المكان المنوّر عشان ينزل",

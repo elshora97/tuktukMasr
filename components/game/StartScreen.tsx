@@ -50,7 +50,7 @@ export default function StartScreen() {
       Icon: MapPin,
       tile: "bg-saffron text-ink",
       onPick: () => {
-        missionActions.newTrip();
+        missionActions.newShift();
         gameActions.enterMode("taxi", "playing");
       },
     },

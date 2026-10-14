@@ -24,7 +24,9 @@ import {
 import { useGameState } from "@/hooks/useGameState";
 import { useMissionState } from "@/hooks/useMissionState";
 import { GeoBuilder, seeded } from "@/lib/geometryKit";
-import { MISSION, ROAD_HALF, STREET, streetLane, type Destination } from "@/lib/mission/missionConfig";
+import { MISSION, ROAD_HALF, STREET, streetLane } from "@/lib/mission/missionConfig";
+import { riverDistance } from "@/lib/mission/cairoMap";
+import { BridgeRails, Landmarks, Nile, landmarkSpots } from "./CairoScenery";
 import { mission, type MissionPhase } from "@/lib/mission/missionStore";
 import { routeToWorld, type Route, type RoutePoint } from "@/lib/mission/route";
 import {
@@ -218,7 +220,7 @@ interface Placement {
   color: Color;
 }
 
-function Buildings({ route, avoid }: { route: Route; avoid: { s: number; radius: number }[] }) {
+function Buildings({ route, avoid }: { route: Route; avoid: { s: number; radius: number; side: number }[] }) {
   const layout = useMemo(() => {
     const rnd = seeded(route.seed ^ 0x5bd1e995);
     const blocks: Placement[][] = BLOCKS.map(() => []);
@@ -233,11 +235,12 @@ function Buildings({ route, avoid }: { route: Route; avoid: { s: number; radius:
         const sz = 0.85 + rnd() * 0.25;
         const frontLen = front * sz;
         const sc = s + frontLen / 2;
-        const blocked = avoid.some((a) => side > 0 && Math.abs(sc - a.s) < a.radius);
+        const wet = route.wet[Math.max(0, Math.min(route.length, Math.round(sc)))] === 1;
+        const blocked = wet || avoid.some((a) => side === a.side && Math.abs(sc - a.s) < a.radius);
         const dOff = side * (SIDEWALK_OUT + 0.3 + depth / 2);
         routeToWorld(route, sc, dOff, tmpA);
         const clearance = distToRoute(route, tmpA.x, tmpA.z);
-        if (!blocked && clearance > SIDEWALK_OUT + depth / 2 - 0.6) {
+        if (!blocked && clearance > SIDEWALK_OUT + depth / 2 - 0.6 && riverDistance(tmpA.x, tmpA.z) > depth) {
           e.set(0, tmpA.h, 0);
           q.setFromEuler(e);
           const m = new Matrix4().compose(new Vector3(tmpA.x, 0, tmpA.z), q, new Vector3(1, sy, sz));
@@ -495,118 +498,19 @@ function DestinationBeacon({ route }: { route: Route }) {
 }
 
 // ---------------------------------------------------------------------------
-// Destination landmark.
 
-function Landmark({ route, destination }: { route: Route; destination: Destination }) {
-  const res = useMemo(() => {
-    const signTex = createSignTexture({
-      bg: destination.kind === "metro" ? "#c8231e" : destination.kind === "market" ? "#f6c21c" : "#0b6b3a",
-      border: "#ffffff",
-      title: destination.sign,
-      titleColor: destination.kind === "market" ? "#1a1a1a" : "#ffffff",
-      display: true,
-    });
-    const b = new GeoBuilder();
-    const stone = "#d9c7a2";
-    switch (destination.kind) {
-      case "station": {
-        // Long arcaded station facade
-        b.box(14, 11, 30, 0, 5.5, 0, stone);
-        for (let i = -2; i <= 2; i++) b.box(0.3, 5.2, 4.2, -7.05, 2.6, i * 6, "#3a2f26");
-        b.box(15, 1, 31, 0, 11.4, 0, "#c4b28c");
-        b.cyl(1.4, 1.4, 0.3, -7.2, 9, 0, "#f4f1ea", { rot: [0, 0, Math.PI / 2], segments: 16 }); // clock
-        break;
-      }
-      case "square": {
-        // Obelisk on a stepped base + low plaza walls
-        b.box(9, 0.5, 9, 0, 0.25, 0, "#cfc3a8");
-        b.box(6, 0.6, 6, 0, 0.8, 0, "#bfb196");
-        b.box(1.6, 16, 1.6, 0, 9, 0, "#c9a76f", { taperX: 0.55, taperZ: 0.55 });
-        b.cyl(0, 0.75, 1.4, 0, 17.7, 0, "#c9a76f", { segments: 4, rot: [0, Math.PI / 4, 0] });
-        for (const sz of [-1, 1]) b.box(0.4, 0.8, 9, -4.5, 0.4, sz * 2.5, "#bfb196");
-        break;
-      }
-      case "metro": {
-        // Entrance canopy with stairs going down
-        b.box(4, 0.25, 6, 0, 3.2, 0, "#2a2a2a");
-        for (const sz of [-1, 1]) b.box(0.2, 3.2, 0.2, -1.8, 1.6, sz * 2.8, "#8a918c");
-        for (let i = 0; i < 6; i++) b.box(3.4, 0.2, 0.6, 0.2 + i * 0.1, 0.1 - i * 0.05, -2 + i * 0.7, "#6d6a65");
-        b.cyl(0.08, 0.08, 5, 2.4, 2.5, 3.6, "#8a918c", { segments: 6 });
-        b.cyl(0.8, 0.8, 0.15, 2.4, 5.4, 3.6, "#c8231e", { rot: [0, 0, Math.PI / 2], segments: 18 });
-        break;
-      }
-      case "market": {
-        // Row of stalls with striped awnings and produce
-        const awnings = ["#c8231e", "#18a39a", "#f6c21c", "#2f6fd6"];
-        for (let i = 0; i < 4; i++) {
-          const z = -9 + i * 6;
-          b.box(3, 1, 4.6, -1, 0.5, z, "#6b4426");
-          b.box(3.6, 0.1, 5.2, -1.2, 2.6, z, awnings[i], { rot: [0, 0, -0.2] });
-          const produce = ["#e8762c", "#3d7a2e", "#d2302a"];
-          [-1.4, 0, 1.4].forEach((pz, j) => b.sphere(0.35, -1, 1.25, z + pz, produce[(i + j) % 3], { w: 8, h: 6 }));
-          for (const sz of [-1, 1]) b.box(0.12, 2.6, 0.12, 0.6, 1.3, z + sz * 2.4, "#4a3020");
-        }
-        break;
-      }
-      default: {
-        // Avenue: a row of palm trees along a planted median
-        b.box(4, 0.4, 26, 0, 0.2, 0, "#7a8a4a");
-        for (let i = -2; i <= 2; i++) {
-          const z = i * 6;
-          b.cyl(0.18, 0.3, 9, 0, 4.5, z, "#7a5a3a", { segments: 7 });
-          for (let k = 0; k < 6; k++) {
-            const a = (k / 6) * Math.PI * 2;
-            b.box(0.5, 0.08, 3.4, Math.sin(a) * 1.4, 8.9, z + Math.cos(a) * 1.4, "#3f7a2e", { rot: [0.45 * Math.cos(a), a, -0.45 * Math.sin(a)] });
-          }
-        }
-      }
-    }
-    const geo = b.build();
-    return { signTex, geo, mat: new MeshStandardMaterial({ vertexColors: true, roughness: 0.85 }) };
-  }, [destination]);
-  useEffect(
-    () => () => {
-      res.signTex.dispose();
-      res.geo.dispose();
-      res.mat.dispose();
-    },
-    [res],
-  );
-  // Placed past the right sidewalk, facing the road (local -x faces the road).
-  const place = useMemo(() => {
-    routeToWorld(route, route.dropS, SIDEWALK_OUT + 8, tmpA);
-    return { x: tmpA.x, z: tmpA.z, h: tmpA.h };
-  }, [route]);
-  const signY = destination.kind === "station" ? 12.6 : 6.4;
-  return (
-    <group position={[place.x, STREET.curbHeight, place.z]} rotation={[0, place.h, 0]}>
-      <mesh geometry={res.geo} material={res.mat} castShadow receiveShadow />
-      {/* Sign faces the road: plane normal -x */}
-      <mesh position={[-7.4, signY, 0]} rotation={[0, -Math.PI / 2, 0]}>
-        <planeGeometry args={[9, 4.5]} />
-        <meshStandardMaterial map={res.signTex} roughness={0.5} emissive="#ffffff" emissiveMap={res.signTex} emissiveIntensity={0.2} side={DoubleSide} />
-      </mesh>
-      {[-3.6, 3.6].map((z) => (
-        <mesh key={z} position={[-7.25, (signY - 2.25) / 2, z]}>
-          <boxGeometry args={[0.22, signY - 2.25, 0.22]} />
-          <meshStandardMaterial color="#5b605d" metalness={0.4} roughness={0.6} />
-        </mesh>
-      ))}
-    </group>
-  );
-}
-
-// ---------------------------------------------------------------------------
-
-export default function MissionWorld({ route, destination }: { route: Route; destination: Destination }) {
+export default function MissionWorld({ route }: { route: Route }) {
   const quality = useGameState((s) => s.quality);
   const shadows = quality === "high";
   const scene = useThree((s) => s.scene);
   useLayoutEffect(() => {
     scene.background = new Color(HAZE);
   }, [scene]);
-  // Keep the curb clear of buildings around the destination landmark.
-  const avoid = useMemo(() => [{ s: route.dropS, radius: 24 }], [route]);
+  // Keep the curb clear of buildings around the landmarks (and the drop-off).
+  const avoid = useMemo(
+    () => [{ s: route.dropS, radius: 24, side: 1 }, ...landmarkSpots(route).map((p) => ({ s: p.s, radius: 30, side: p.side }))],
+    [route],
+  );
   return (
     <>
       <fog attach="fog" args={[HAZE, 45, 230]} />
@@ -618,7 +522,9 @@ export default function MissionWorld({ route, destination }: { route: Route; des
       <Zones route={route} />
       <RouteChevrons route={route} />
       <DestinationBeacon route={route} />
-      <Landmark route={route} destination={destination} />
+      <Landmarks route={route} />
+      <Nile />
+      <BridgeRails route={route} />
     </>
   );
 }

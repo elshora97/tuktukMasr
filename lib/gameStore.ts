@@ -61,12 +61,13 @@ export interface TukTukPose {
   /** >0 while invulnerable after a spin-out (renders flickering). */
   ghost: number;
   boost: number;
-  /** Seated passenger variant, −1 = empty. */
+  /** Seated passenger variant, −1 = empty (passenger2: second rider). */
   passenger: number;
+  passenger2: number;
 }
 
 export function makePose(): TukTukPose {
-  return { x: START_X, z: 0, heading: 0, speed: 0, crashT: -1, spinT: -1, ghost: 0, boost: 0, passenger: -1 };
+  return { x: START_X, z: 0, heading: 0, speed: 0, crashT: -1, spinT: -1, ghost: 0, boost: 0, passenger: -1, passenger2: -1 };
 }
 
 /**

@@ -14,21 +14,33 @@ const b: RoutePoint = { x: 0, z: 0, h: 0 };
 const CURB_D = ROAD_HALF + 1.3;
 const ease = (t: number) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
 
-/**
- * The customer: waits on the right sidewalk waving at the tuk-tuk (with a
- * bobbing marker overhead), walks to the tuk-tuk to board, and walks back to
- * the curb at the destination.
- */
+/** The fare's riders: one, or two travelling together. */
 export default function MissionPassenger() {
-  const variant = useMissionState((s) => s.passenger);
+  const second = useMissionState((s) => s.passenger2);
+  return (
+    <>
+      <Rider slot={0} />
+      {second >= 0 && <Rider slot={1} />}
+    </>
+  );
+}
+
+/**
+ * A customer: waits on the right sidewalk waving at the tuk-tuk (with a
+ * bobbing marker overhead), walks to the tuk-tuk to board, and walks back to
+ * the curb at the destination. Slot 1 stands just behind slot 0.
+ */
+function Rider({ slot }: { slot: 0 | 1 }) {
+  const variant = useMissionState((s) => (slot === 0 ? s.passenger : s.passenger2));
   const tripId = useMissionState((s) => s.tripId);
+  const gap = slot * 1.3;
   const root = useRef<Group>(null);
   const arm = useRef<Group>(null);
   const marker = useRef<Group>(null);
   const ring = useRef<Mesh>(null);
 
   const res = useMemo(() => {
-    const look = PASSENGERS[variant % PASSENGERS.length];
+    const look = PASSENGERS[Math.max(0, variant) % PASSENGERS.length];
     const g = buildStandingPassenger(look);
     return {
       body: g.body,
@@ -67,7 +79,7 @@ export default function MissionPassenger() {
     let showMarker = false;
 
     const atCurb = (s: number) => {
-      routeToWorld(route, s, CURB_D, a);
+      routeToWorld(route, s + gap, CURB_D, a);
       x = a.x;
       z = a.z;
       yaw = a.h + Math.PI / 2; // face the road
@@ -79,12 +91,12 @@ export default function MissionPassenger() {
       case "pickupAvailable":
         atCurb(route.passengerS);
         wave = 1;
-        showMarker = true;
+        showMarker = slot === 0;
         break;
       case "boarding": {
         // Walk from the curb to the tuk-tuk's right side, then climb in.
         const k = ease(mission.phaseT / (MISSION.boardingS * 0.8));
-        routeToWorld(route, route.passengerS, CURB_D, a);
+        routeToWorld(route, route.passengerS + gap, CURB_D, a);
         routeToWorld(route, mission.s + 0.4, mission.d + 0.95, b);
         x = a.x + (b.x - a.x) * k;
         z = a.z + (b.z - a.z) * k;
@@ -97,7 +109,7 @@ export default function MissionPassenger() {
       case "droppingOff": {
         const k = ease((mission.phaseT - 0.25) / (MISSION.arrivingS - 0.45));
         routeToWorld(route, mission.s + 0.4, mission.d + 0.95, a);
-        routeToWorld(route, mission.s + 1.5, CURB_D, b);
+        routeToWorld(route, mission.s + 1.5 + gap, CURB_D, b);
         x = a.x + (b.x - a.x) * k;
         z = a.z + (b.z - a.z) * k;
         y = STREET.curbHeight * k;
@@ -107,8 +119,8 @@ export default function MissionPassenger() {
         break;
       }
       case "completed":
-        // Stays on the curb waving goodbye.
-        routeToWorld(route, mission.s + 1.5, CURB_D, a);
+        // Stays on the curb waving goodbye (left behind as the tuk-tuk drives on).
+        routeToWorld(route, mission.dropStopS + 1.5 + gap, CURB_D, a);
         x = a.x;
         z = a.z;
         yaw = a.h + Math.PI / 2; // face the road
@@ -116,7 +128,7 @@ export default function MissionPassenger() {
         break;
       case "failed":
         // Only visible if they never boarded.
-        visible = mission.pickupStopS === 0;
+        visible = mission.pickupStopS === 0 && mission.s < route.passengerS + 60;
         atCurb(route.passengerS);
         break;
       default:
