@@ -1,10 +1,12 @@
 "use client";
 
+import { useState } from "react";
 import { Home, Trophy } from "lucide-react";
 import { gameActions, useGameState } from "@/hooks/useGameState";
 import { runtime } from "@/lib/gameStore";
 import { audio } from "@/lib/audio";
 import { formatDistance } from "./GameHUD";
+import RecordPanel from "./RecordPanel";
 
 export default function GameOverScreen() {
   const score = useGameState((s) => s.score);
@@ -14,7 +16,8 @@ export default function GameOverScreen() {
   const closeCalls = useGameState((s) => s.closeCalls);
   const message = useGameState((s) => s.gameOverMessage);
   // Snapshot taken when the overlay mounts (after the crash), not live.
-  const distance = formatDistance(runtime.distance);
+  const [meters] = useState(() => Math.round(runtime.distance));
+  const distance = formatDistance(meters);
 
   return (
     <div className="absolute inset-0 grid place-items-center overflow-y-auto bg-ink/50 p-4 backdrop-blur-[3px]" data-ui>
@@ -59,6 +62,7 @@ export default function GameOverScreen() {
               <dd className="text-base font-black tabular-nums">{distance}</dd>
             </div>
           </dl>
+          <RecordPanel score={score} distance={meters} overtakes={overtakes} />
 
           <button
             type="button"

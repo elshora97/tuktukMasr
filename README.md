@@ -59,6 +59,7 @@ See `.env.example`.
 | `NEXT_PUBLIC_MULTIPLAYER_URL` | game (build time) | Public URL of the race server, e.g. `https://toktok-race.onrender.com`. **Required in production** for online races. |
 | `PORT` | race server | Listen port (default 4000; most hosts set it for you). |
 | `CORS_ORIGIN` | race server | Comma-separated allowed origins, e.g. `https://toktok.vercel.app`. Defaults to `*` (dev only). |
+| `DATA_DIR` | race server | Where the endless-mode high scores (`leaderboard.json`) are saved. Default `data` (`/app/data` in `Dockerfile.race`). Mount a persistent volume there to keep records across deploys. |
 | `RACE_DISTANCE` | race server | Optional course length in meters (default 2400), handy for testing. |
 
 ## Deploying

@@ -24,6 +24,7 @@ import {
   type Room,
   type ServerPlayer,
 } from "./rooms";
+import { handleLeaderboard } from "./leaderboard";
 
 const PORT = Number(process.env.PORT ?? 4000);
 const ORIGINS = (process.env.CORS_ORIGIN ?? "*")
@@ -44,6 +45,10 @@ const http = createServer((req, res) => {
     res.end(JSON.stringify({ ok: true, rooms: rooms.size, players: seats.size }));
     return;
   }
+  // CORS for plain HTTP (Socket.IO handles its own): echo an allowed origin.
+  const origin = req.headers.origin;
+  const cors = ORIGINS.includes("*") ? "*" : origin && ORIGINS.includes(origin) ? origin : null;
+  if (handleLeaderboard(req, res, cors)) return;
   res.writeHead(404);
   res.end();
 });

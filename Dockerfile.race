@@ -8,7 +8,9 @@ RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
 COPY tsconfig.json ./
 COPY lib ./lib
 COPY server ./server
-ENV NODE_ENV=production PORT=8080
+# High scores live here: mount a persistent volume at /app/data to keep them across deploys.
+RUN mkdir -p /app/data && chown node:node /app/data
+ENV NODE_ENV=production PORT=8080 DATA_DIR=/app/data
 EXPOSE 8080
 USER node
 CMD ["npx", "tsx", "server/index.ts"]
