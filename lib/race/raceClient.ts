@@ -56,8 +56,10 @@ function readName() {
  * `npm run dev` / `npm start` + `npm run race-server` work, also over LAN.
  */
 export function serverUrl(): string | null {
-  const env = process.env.NEXT_PUBLIC_MULTIPLAYER_URL;
-  if (env) return env;
+  const env = process.env.NEXT_PUBLIC_MULTIPLAYER_URL?.trim().replace(/\/+$/, "");
+  // Tolerate a bare host ("p01--x.code.run"): without a scheme, fetch() would
+  // treat it as a path on the game's own site.
+  if (env) return /^https?:\/\//i.test(env) ? env : `https://${env}`;
   if (typeof window === "undefined") return null;
   return `${window.location.protocol}//${window.location.hostname}:4000`;
 }
