@@ -9,6 +9,7 @@ import { missionActions } from "@/lib/mission/missionStore";
 import { raceActions } from "@/lib/race/raceClient";
 import { RACE_ENABLED } from "@/lib/race/shared";
 import SettingsButtons from "./SettingsButtons";
+import { ChampionButton } from "./Leaderboard";
 
 interface ModeCard {
   id: "endless" | "race" | "taxi";
@@ -110,7 +111,7 @@ export default function StartScreen() {
               </li>
             ))}
           </ul>
-
+          <ChampionButton />
 
           {pwa.canInstall && (
             <button

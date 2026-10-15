@@ -1,11 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Globe, Loader2, Medal, Smartphone } from "lucide-react";
+import { Loader2, Medal } from "lucide-react";
 import { RACE } from "@/lib/race/shared";
 import { fetchBoard, savedName, submitScore, type Board } from "@/lib/leaderboard";
-
-const MEDALS = ["🥇", "🥈", "🥉"];
+import { BoardList, BoardScope, MEDALS } from "./Leaderboard";
 
 /**
  * After a crash: write your name to save the run on the high-score board
@@ -36,8 +35,6 @@ export default function RecordPanel({ score, distance, overtakes }: { score: num
   };
 
   const mineId = state === "saved" ? board?.id : undefined;
-  const top = board?.entries.slice(0, 10) ?? [];
-  const mineOutside = mineId && !top.some((e) => e.id === mineId) && board?.rank;
 
   return (
     <section className="mt-3 rounded-2xl border-[2.5px] border-ink bg-white/70 p-2.5" aria-labelledby="board-title">
@@ -88,37 +85,13 @@ export default function RecordPanel({ score, distance, overtakes }: { score: num
       <h3 id="board-title" className="mb-1 flex items-center gap-1.5 text-sm font-black">
         <Medal className="size-4 text-tuk" strokeWidth={2.6} aria-hidden />
         أبطال الكوبري
-        {board && (
-          <span className="mr-auto flex items-center gap-1 text-[0.7rem] font-bold text-ink/60">
-            {board.global ? <Globe className="size-3.5" aria-hidden /> : <Smartphone className="size-3.5" aria-hidden />}
-            {board.global ? "كل اللعيبة" : "على الجهاز ده بس"}
-          </span>
-        )}
+        <span className="mr-auto">
+          <BoardScope board={board} />
+        </span>
       </h3>
-      {!board ? (
-        <p className="flex items-center justify-center gap-1 py-2 text-xs font-bold text-ink/60">
-          <Loader2 className="size-3.5 animate-spin" aria-hidden /> بنجيب الأرقام..
-        </p>
-      ) : top.length === 0 ? (
-        <p className="py-2 text-center text-xs font-bold text-ink/60">لسه مفيش أرقام.. كن أول بطل!</p>
-      ) : (
-        <ol className="max-h-44 space-y-0.5 overflow-y-auto text-sm">
-          {top.map((e, i) => (
-            <li key={e.id} className={`flex items-center gap-2 rounded-lg px-2 py-0.5 ${e.id === mineId ? "bg-saffron font-black" : i % 2 ? "" : "bg-sand/40"}`}>
-              <span className="w-6 text-center tabular-nums">{MEDALS[i] ?? i + 1}</span>
-              <span className="min-w-0 flex-1 truncate font-bold">{e.name}</span>
-              <span className="font-black tabular-nums">{e.score}</span>
-            </li>
-          ))}
-          {mineOutside && (
-            <li className="flex items-center gap-2 rounded-lg bg-saffron px-2 py-0.5 font-black">
-              <span className="w-6 text-center tabular-nums">{board!.rank}</span>
-              <span className="min-w-0 flex-1 truncate">{name}</span>
-              <span className="tabular-nums">{score}</span>
-            </li>
-          )}
-        </ol>
-      )}
+      <div className="max-h-44 overflow-y-auto">
+        <BoardList board={board} mineId={mineId} mine={mineId && board?.rank ? { rank: board.rank, name, score } : undefined} />
+      </div>
     </section>
   );
 }

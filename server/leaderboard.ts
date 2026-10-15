@@ -1,6 +1,6 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { randomUUID } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { sanitizeName } from "../lib/race/shared";
 import type { LeaderboardEntry, LeaderboardResponse } from "../lib/leaderboardTypes";
@@ -11,6 +11,8 @@ import type { LeaderboardEntry, LeaderboardResponse } from "../lib/leaderboardTy
  *   GET  /leaderboard          → { entries: top 20 }
  *   POST /leaderboard {name, score, distance, overtakes}
  *                              → { entries, id, rank }
+ *   DELETE /leaderboard[?id=x] (Authorization: Bearer $ADMIN_TOKEN)
+ *                              → wipe the board, or remove one entry
  *
  * Kept in memory and written to DATA_DIR/leaderboard.json (atomic rename),
  * so it survives restarts when DATA_DIR is on a persistent volume.
@@ -78,6 +80,22 @@ export function handleLeaderboard(req: IncomingMessage, res: ServerResponse, cor
   if (req.method === "GET") {
     const body: LeaderboardResponse = { entries: sorted().slice(0, SHOW) };
     send(res, 200, body, cors);
+    return true;
+  }
+  if (req.method === "DELETE") {
+    // Admin only, and disabled unless ADMIN_TOKEN is set on the server.
+    const token = process.env.ADMIN_TOKEN ?? "";
+    const given = (req.headers.authorization ?? "").replace(/^Bearer\s+/i, "");
+    const ok = token.length >= 8 && given.length === token.length && timingSafeEqual(Buffer.from(given), Buffer.from(token));
+    if (!ok) {
+      send(res, 403, { error: "forbidden" }, cors);
+      return true;
+    }
+    const id = new URL(req.url, "http://x").searchParams.get("id");
+    const before = entries.length;
+    entries = id ? entries.filter((e) => e.id !== id) : [];
+    save();
+    send(res, 200, { removed: before - entries.length, entries: sorted().slice(0, SHOW) }, cors);
     return true;
   }
   if (req.method !== "POST") {

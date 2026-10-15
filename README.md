@@ -60,6 +60,7 @@ See `.env.example`.
 | `PORT` | race server | Listen port (default 4000; most hosts set it for you). |
 | `CORS_ORIGIN` | race server | Comma-separated allowed origins, e.g. `https://toktok.vercel.app`. Defaults to `*` (dev only). |
 | `DATA_DIR` | race server | Where the endless-mode high scores (`leaderboard.json`) are saved. Default `data` (`/app/data` in `Dockerfile.race`). Mount a persistent volume there to keep records across deploys. |
+| `ADMIN_TOKEN` | race server | Password (8+ chars) that enables clearing records: `curl -X DELETE -H "Authorization: Bearer <token>" https://<server>/leaderboard` (add `?id=<id>` to remove one). Unset = clearing disabled. |
 | `RACE_DISTANCE` | race server | Optional course length in meters (default 2400), handy for testing. |
 
 ## Deploying
