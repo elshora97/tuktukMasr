@@ -1,6 +1,6 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { sanitizeName } from "../lib/race/shared";
 import type { LeaderboardEntry, LeaderboardResponse } from "../lib/leaderboardTypes";
@@ -11,6 +11,8 @@ import type { LeaderboardEntry, LeaderboardResponse } from "../lib/leaderboardTy
  *   GET  /leaderboard          → { entries: top 20 }
  *   POST /leaderboard {name, score, distance, overtakes}
  *                              → { entries, id, rank }
+ *   DELETE /leaderboard/<id>   (Authorization: Bearer $ADMIN_TOKEN)
+ *                              → { removed: true }   — admin only, off when ADMIN_TOKEN is unset
  *
  * Kept in memory and written to DATA_DIR/leaderboard.json (atomic rename),
  * so it survives restarts when DATA_DIR is on a persistent volume.
@@ -62,9 +64,39 @@ function int(v: unknown, max: number): number | null {
   return Number.isFinite(n) && n >= 0 && n <= max ? Math.round(n) : null;
 }
 
+const ADMIN_TOKEN = process.env.ADMIN_TOKEN?.trim() ?? "";
+const digest = (v: string) => createHash("sha256").update(v).digest();
+
+/** Constant-time check of "Authorization: Bearer <token>" against ADMIN_TOKEN. */
+function isAdmin(req: IncomingMessage) {
+  if (!ADMIN_TOKEN) return false;
+  const given = req.headers.authorization?.replace(/^Bearer\s+/i, "").trim() ?? "";
+  return timingSafeEqual(digest(given), digest(ADMIN_TOKEN));
+}
+
 /** Handles /leaderboard; returns false for other paths. `cors` = allowed origin to echo, or null. */
 export function handleLeaderboard(req: IncomingMessage, res: ServerResponse, cors: string | null): boolean {
-  if (!req.url || req.url.split("?")[0] !== "/leaderboard") return false;
+  const path = req.url?.split("?")[0] ?? "";
+  const one = /^\/leaderboard\/([\w-]{1,32})$/.exec(path);
+  if (one && req.method === "DELETE") {
+    // Hidden admin action: remove one record by id. Without ADMIN_TOKEN it doesn't exist.
+    if (!ADMIN_TOKEN) return false;
+    if (!isAdmin(req)) {
+      send(res, 401, { error: "unauthorized" }, null);
+      return true;
+    }
+    const i = entries.findIndex((e) => e.id === one[1]);
+    if (i < 0) {
+      send(res, 404, { error: "not_found" }, null);
+      return true;
+    }
+    const [gone] = entries.splice(i, 1);
+    save();
+    console.log(`[leaderboard] removed ${gone.id} "${gone.name}" (${gone.score})`);
+    send(res, 200, { removed: true, entry: gone }, null);
+    return true;
+  }
+  if (path !== "/leaderboard") return false;
   if (req.method === "OPTIONS") {
     res.writeHead(204, {
       ...(cors ? { "Access-Control-Allow-Origin": cors, Vary: "Origin" } : {}),
