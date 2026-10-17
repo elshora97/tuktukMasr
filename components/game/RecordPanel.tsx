@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Loader2, Medal } from "lucide-react";
 import { RACE } from "@/lib/race/shared";
 import { fetchBoard, savedName, submitScore, type Board } from "@/lib/leaderboard";
+import { hasBadWords } from "@/lib/badWords";
 import { BoardList, BoardScope, MEDALS } from "./Leaderboard";
 
 /**
@@ -27,6 +28,7 @@ export default function RecordPanel({ score, distance, overtakes }: { score: num
   const canSave = score > 0 && state === "idle";
   const save = async () => {
     if (!name.trim()) return setError("اكتب اسمك الأول يا كابتن");
+    if (hasBadWords(name)) return setError("الاسم ده مينفعش يا كابتن.. اختار اسم محترم 🙏");
     setError("");
     setState("saving");
     const b = await submitScore(name, score, distance, overtakes);

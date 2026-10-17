@@ -9,6 +9,7 @@ import { createServer } from "node:http";
 import { Server, type Socket } from "socket.io";
 import type { ClientToServer, JoinError, ServerToClient } from "../lib/race/protocol";
 import { RACE, ROOM_ID_RE, normalizeRoomId, sanitizeName } from "../lib/race/shared";
+import { hasBadWords } from "../lib/badWords";
 import {
   addPlayer,
   backToLobby,
@@ -141,7 +142,7 @@ io.on("connection", (socket) => {
   socket.on("room:create", (req, ack) => {
     if (typeof ack !== "function") return;
     const name = sanitizeName(req?.name);
-    if (!name) return ack({ ok: false, error: "name" satisfies JoinError });
+    if (!name || hasBadWords(name)) return ack({ ok: false, error: "name" satisfies JoinError });
     const room = createRoom(newRoomId(rooms), Date.now(), DISTANCE);
     rooms.set(room.id, room);
     const player = addPlayer(room, name, Date.now());
@@ -167,7 +168,7 @@ io.on("connection", (socket) => {
       }
     }
     const name = sanitizeName(req?.name);
-    if (!name) return ack({ ok: false, error: "name" satisfies JoinError });
+    if (!name || hasBadWords(name)) return ack({ ok: false, error: "name" satisfies JoinError });
     if (room.phase !== "lobby") return ack({ ok: false, error: "started" satisfies JoinError });
     if (members(room).length >= RACE.maxPlayers) return ack({ ok: false, error: "full" satisfies JoinError });
     const player = addPlayer(room, name, Date.now());

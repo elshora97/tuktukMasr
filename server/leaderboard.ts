@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { sanitizeName } from "../lib/race/shared";
+import { hasBadWords } from "../lib/badWords";
 import type { LeaderboardEntry, LeaderboardResponse } from "../lib/leaderboardTypes";
 
 /**
@@ -141,6 +142,7 @@ export function handleLeaderboard(req: IncomingMessage, res: ServerResponse, cor
     const distance = int(data.distance, LIMITS.distance);
     const overtakes = int(data.overtakes, LIMITS.overtakes);
     if (!name) return send(res, 400, { error: "name" }, cors);
+    if (hasBadWords(name)) return send(res, 400, { error: "bad_name" }, cors);
     if (score === null || score <= 0 || distance === null || overtakes === null) return send(res, 400, { error: "score" }, cors);
     lastPost.set(ip, now);
     if (lastPost.size > 5000) lastPost.clear();
